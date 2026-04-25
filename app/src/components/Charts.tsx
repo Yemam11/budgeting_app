@@ -1,25 +1,32 @@
 import type { FC } from 'react';
 
+const fmtAxis = (v: number) => {
+  if (v === 0) return '$0';
+  if (v >= 10000) return `$${Math.round(v / 1000)}k`;
+  if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+  return `$${Math.round(v)}`;
+};
+
 type CashflowDatum = { label: string; income: number; spend: number };
 
 export const CashflowBars: FC<{ data: CashflowDatum[]; height?: number }> = ({ data, height = 200 }) => {
   const max = Math.max(...data.flatMap(d => [d.income, d.spend]), 1) * 1.15;
   const W = 600, H = height;
-  const pad = { t: 12, r: 8, b: 24, l: 36 };
+  const pad = { t: 12, r: 8, b: 24, l: 44 };
   const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
   const bw = iw / data.length * 0.7;
   const gap = iw / data.length * 0.3;
   const grid = 'oklch(50% 0.01 260 / 0.1)';
   const lbl = 'var(--ink-mute)';
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
       {[0, 0.5, 1].map(t => {
         const y = pad.t + ih * (1 - t);
         return (
           <g key={t}>
             <line x1={pad.l} x2={W - pad.r} y1={y} y2={y} stroke={grid} strokeDasharray="2 3" />
             <text x={pad.l - 6} y={y + 3} fontSize="9" fill={lbl} textAnchor="end" fontFamily="var(--mono)">
-              ${Math.round(max * t / 1000)}k
+              {fmtAxis(max * t)}
             </text>
           </g>
         );
@@ -75,7 +82,7 @@ export const StackedBars: FC<{ months: StackedMonth[]; categories: StackedCat[];
   const totals = months.map(m => Object.values(m.values).reduce((a, b) => a + b, 0));
   const max = Math.max(...totals, 1) * 1.15;
   const W = 600, H = height;
-  const pad = { t: 12, r: 8, b: 24, l: 36 };
+  const pad = { t: 12, r: 8, b: 24, l: 44 };
   const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
   const bw = iw / months.length * 0.65;
   const gap = iw / months.length * 0.35;
@@ -88,20 +95,21 @@ export const StackedBars: FC<{ months: StackedMonth[]; categories: StackedCat[];
         return (
           <g key={t}>
             <line x1={pad.l} x2={W - pad.r} y1={y} y2={y} stroke={grid} strokeDasharray="2 3" />
-            <text x={pad.l - 6} y={y + 3} fontSize="9" fill={lbl} textAnchor="end" fontFamily="var(--mono)">${Math.round(max * t / 1000)}k</text>
+            <text x={pad.l - 6} y={y + 3} fontSize="9" fill={lbl} textAnchor="end" fontFamily="var(--mono)">{fmtAxis(max * t)}</text>
           </g>
         );
       })}
       {months.map((m, i) => {
         const x = pad.l + i * (bw + gap) + gap / 2;
         let barY = pad.t + ih;
-        const rects = categories.map(c => {
+        const rects: React.ReactNode[] = [];
+        for (const c of categories) {
           const v = m.values[c.id] ?? 0;
-          if (v <= 0) return null;
+          if (v <= 0) continue;
           const h = (v / max) * ih;
+          rects.push(<rect key={c.id} x={x} y={barY - h} width={bw} height={Math.max(h - 1, 0)} fill={c.color} opacity={0.88} />);
           barY -= h;
-          return <rect key={c.id} x={x} y={barY} width={bw} height={Math.max(h - 1, 0)} fill={c.color} opacity={0.88} />;
-        });
+        }
         return (
           <g key={i}>
             {rects}
@@ -116,57 +124,100 @@ export const StackedBars: FC<{ months: StackedMonth[]; categories: StackedCat[];
 type SankeyInflow = { label: string; value: number };
 type SankeyOutflow = { label: string; value: number; color: string };
 
+const truncate = (s: string, max = 14) => s.length > max ? s.slice(0, max - 1) + '…' : s;
+
 export const Sankey: FC<{ income: SankeyInflow[]; outflows: SankeyOutflow[]; height?: number }> = ({ income, outflows, height = 230 }) => {
   if (income.length === 0 && outflows.length === 0) {
     return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-mute)', fontSize: 12 }}>No data yet</div>;
   }
-  const W = 620, H = height;
+  const W = 700, H = height;
+  const leftX = 140, midX = 270, midX2 = 430, rightX = 570, nodeW = 10;
+  const usableH = H - 40;
+  const startY = 20;
+
   const totalIn = income.reduce((s, d) => s + d.value, 0);
   const totalOut = outflows.reduce((s, d) => s + d.value, 0);
-  const total = Math.max(totalIn, totalOut, 1);
-  const scale = (H - 40) / total;
-  const leftX = 20, midX = 220, midX2 = 380, rightX = 590;
-  const nodeW = 10;
+  // Scale by the larger of the two so nodes never exceed usableH
+  const scaleBase = Math.max(totalIn, totalOut, 1);
+  const scale = usableH / scaleBase;
 
-  let lY = 20;
-  const lNodes = income.map(d => { const h = d.value * scale; const n = { ...d, y: lY, h }; lY += h + 8; return n; });
-  let rY = 20;
-  const rNodes = outflows.map(d => { const h = d.value * scale; const n = { ...d, y: rY, h }; rY += h + 4; return n; });
-  const hubY = 20, hubH = total * scale;
+  // Left nodes — proportional to their actual value
+  let lY = startY;
+  const lNodes = income.map((d, i) => {
+    const h = Math.max(d.value * scale, 4);
+    const n = { ...d, y: lY, h };
+    lY += h + (i < income.length - 1 ? 6 : 0);
+    return n;
+  });
 
-  let hubAccTop = hubY;
+  // Hub height = left total (income)
+  const hubH = totalIn * scale;
+
+  // Right nodes — normalized so they sum to hubH (proportional allocation of income)
+  // This prevents right side from overflowing when spend >> income
+  const rGap = 2;
+  const rGapTotal = Math.max(outflows.length - 1, 0) * rGap;
+  const rAvail = Math.max(hubH - rGapTotal, 4);
+  let rY = startY;
+  const rNodes = outflows.map((d, i) => {
+    const h = totalOut > 0 ? Math.max((d.value / totalOut) * rAvail, 1) : 1;
+    const n = { ...d, y: rY, h };
+    rY += h + (i < outflows.length - 1 ? rGap : 0);
+    return n;
+  });
+
+  // Ribbons — left fills hub from top down, right also from hub top down
+  let hubAccTop = startY;
   const leftRibbons = lNodes.map(n => {
     const y0 = n.y, y1 = hubAccTop;
     hubAccTop += n.h;
-    return `M${leftX + nodeW} ${y0} C${(leftX + midX) / 2} ${y0}, ${(leftX + midX) / 2} ${y1}, ${midX} ${y1} L${midX} ${y1 + n.h} C${(leftX + midX) / 2} ${y1 + n.h}, ${(leftX + midX) / 2} ${y0 + n.h}, ${leftX + nodeW} ${y0 + n.h} Z`;
+    const cx = (leftX + midX) / 2;
+    return `M${leftX + nodeW} ${y0} C${cx} ${y0},${cx} ${y1},${midX} ${y1} L${midX} ${y1 + n.h} C${cx} ${y1 + n.h},${cx} ${y0 + n.h},${leftX + nodeW} ${y0 + n.h} Z`;
   });
-  let hubAccBot = hubY;
+
+  let hubAccBot = startY;
   const rightRibbons = rNodes.map(n => {
     const y0 = hubAccBot, y1 = n.y;
     hubAccBot += n.h;
-    return { path: `M${midX2} ${y0} C${(midX2 + rightX) / 2} ${y0}, ${(midX2 + rightX) / 2} ${y1}, ${rightX - nodeW} ${y1} L${rightX - nodeW} ${y1 + n.h} C${(midX2 + rightX) / 2} ${y1 + n.h}, ${(midX2 + rightX) / 2} ${y0 + n.h}, ${midX2} ${y0 + n.h} Z`, color: n.color };
+    const cx = (midX2 + rightX) / 2;
+    return { path: `M${midX2} ${y0} C${cx} ${y0},${cx} ${y1},${rightX - nodeW} ${y1} L${rightX - nodeW} ${y1 + n.h} C${cx} ${y1 + n.h},${cx} ${y0 + n.h},${midX2} ${y0 + n.h} Z`, color: n.color };
   });
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
-      {leftRibbons.map((p, i) => <path key={'l' + i} d={p} fill="var(--accent)" opacity={0.35} />)}
-      {rightRibbons.map((r, i) => <path key={'r' + i} d={r.path} fill={r.color} opacity={0.4} />)}
-      {lNodes.map((n, i) => (
-        <g key={'ln' + i}>
-          <rect x={leftX} y={n.y} width={nodeW} height={n.h} rx={2} fill="var(--accent)" />
-          <text x={leftX - 8} y={n.y + n.h / 2 + 4} fontSize="10" fill="var(--ink-2)" textAnchor="end" fontWeight="500">{n.label}</text>
-          <text x={leftX - 8} y={n.y + n.h / 2 + 16} fontSize="9" fill="var(--ink-mute)" textAnchor="end" fontFamily="var(--mono)">${(n.value / 1000).toFixed(1)}k</text>
-        </g>
-      ))}
-      <rect x={midX} y={hubY} width={nodeW} height={hubH} rx={2} fill="oklch(30% 0.015 260)" />
-      <rect x={midX2 - nodeW} y={hubY} width={nodeW} height={hubAccBot - hubY} rx={2} fill="oklch(30% 0.015 260)" />
-      {rNodes.map((n, i) => (
-        <g key={'rn' + i}>
-          <rect x={rightX - nodeW} y={n.y} width={nodeW} height={n.h} rx={2} fill={n.color} />
-          <text x={rightX + 4} y={n.y + n.h / 2 + 4} fontSize="10" fill="var(--ink-2)" fontWeight="500">{n.label}</text>
-          <text x={rightX + 4} y={n.y + n.h / 2 + 16} fontSize="9" fill="var(--ink-mute)" fontFamily="var(--mono)">${(n.value / 1000).toFixed(1)}k</text>
-        </g>
-      ))}
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+      {leftRibbons.map((p, i) => <path key={'l' + i} d={p} fill="var(--accent)" opacity={0.3} />)}
+      {rightRibbons.map((r, i) => <path key={'r' + i} d={r.path} fill={r.color} opacity={0.38} />)}
+
+      {/* Left hub rail */}
+      <rect x={midX} y={startY} width={nodeW} height={hubH} rx={2} fill="oklch(30% 0.015 260)" />
+      {/* Right hub rail */}
+      <rect x={midX2 - nodeW} y={startY} width={nodeW} height={hubH} rx={2} fill="oklch(30% 0.015 260)" />
+
+      {lNodes.map((n, i) => {
+        const midY = n.y + n.h / 2;
+        return (
+          <g key={'ln' + i}>
+            <rect x={leftX} y={n.y} width={nodeW} height={n.h} rx={2} fill="var(--accent)" />
+            {n.h >= 12 && <>
+              <text x={leftX - 10} y={midY + (n.h < 22 ? 3 : -1)} fontSize="10" fill="var(--ink-2)" textAnchor="end" fontWeight="500">{truncate(n.label)}</text>
+              {n.h >= 22 && <text x={leftX - 10} y={midY + 11} fontSize="9" fill="var(--ink-mute)" textAnchor="end" fontFamily="var(--mono)">{fmtAxis(n.value)}</text>}
+            </>}
+          </g>
+        );
+      })}
+
+      {rNodes.map((n, i) => {
+        const midY = n.y + n.h / 2;
+        return (
+          <g key={'rn' + i}>
+            <rect x={rightX - nodeW} y={n.y} width={nodeW} height={n.h} rx={2} fill={n.color} />
+            {n.h >= 10 && <>
+              <text x={rightX + 10} y={midY + (n.h < 22 ? 3 : -1)} fontSize="10" fill="var(--ink-2)" fontWeight="500">{truncate(n.label)}</text>
+              {n.h >= 22 && <text x={rightX + 10} y={midY + 11} fontSize="9" fill="var(--ink-mute)" fontFamily="var(--mono)">{fmtAxis(n.value)}</text>}
+            </>}
+          </g>
+        );
+      })}
     </svg>
   );
 };

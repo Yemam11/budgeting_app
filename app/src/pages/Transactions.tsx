@@ -1,14 +1,34 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { nanoid } from 'nanoid';
 import { db } from '../db';
-import type { Category, Transaction, TxType } from '../types';
+import type { Bank, Category, Transaction, TxType } from '../types';
 import { SplitDialog } from '../components/SplitDialog';
 import { recategorizeTransaction } from '../lib/recategorize';
-import { fmtCAD, monthKey } from '../lib/money';
+import { fmtCAD, monthKey, currentMonthKey } from '../lib/money';
 import { Icon, BankLogo, CatSwatch, ConfBar } from '../components/Primitives';
 
+const TYPE_LABEL: Record<string, string> = {
+  spend: 'Spend',
+  income: 'Income',
+  transfer: 'Transfer',
+  'cc-payment': 'Credit Card Payment',
+  'needs-review': 'Needs Review',
+};
+
 type TypeFilter = 'all' | TxType | 'needs-review';
-const PAGE_SIZE = 20;
+type DatePreset = 'all' | 'this-month' | 'last-30' | 'last-3m' | 'ytd' | string;
+
+function getDateCutoff(preset: DatePreset): string | null {
+  const now = new Date();
+  if (preset === 'all') return null;
+  if (preset === 'this-month') return currentMonthKey() + '-01';
+  if (preset === 'last-30') { const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); }
+  if (preset === 'last-3m') { const d = new Date(now); d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); }
+  if (preset === 'ytd') return `${now.getFullYear()}-01-01`;
+  return null;
+}
 
 export function TransactionsPage() {
   const txs = useLiveQuery(() => db.transactions.orderBy('date').reverse().toArray(), []) ?? [];
@@ -16,15 +36,19 @@ export function TransactionsPage() {
   const outstandingEntries = useLiveQuery(() => db.outstanding.where('status').notEqual('settled').toArray(), []) ?? [];
   const thresholdSetting = useLiveQuery(() => db.settings.get('confidenceThreshold'), []);
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
-
   const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
-  const [monthFilter, setMonthFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState<DatePreset>('all');
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [showAddTx, setShowAddTx] = useState(false);
+  const [owedTx, setOwedTx] = useState<Transaction | null>(null);
+  const [owedName, setOwedName] = useState('');
+  const [propagateDialog, setPropagateDialog] = useState<{
+    tx: Transaction; newCatId: string | null; catName: string;
+  } | null>(null);
 
   const months = useMemo(() => {
     const set = new Set(txs.map(t => monthKey(t.date)));
@@ -32,6 +56,7 @@ export function TransactionsPage() {
   }, [txs]);
 
   const visibleTxs = useMemo(() => txs.filter(t => !t.hidden), [txs]);
+  const owedTxIds = useMemo(() => new Set(outstandingEntries.map(e => e.transactionId)), [outstandingEntries]);
 
   const typeCounts = useMemo(() => ({
     all: visibleTxs.length,
@@ -44,34 +69,34 @@ export function TransactionsPage() {
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
+    const cutoff = getDateCutoff(dateFilter);
+    const isMonthFilter = /^\d{4}-\d{2}$/.test(dateFilter);
     return visibleTxs.filter(t => {
-      if (monthFilter !== 'all' && monthKey(t.date) !== monthFilter) return false;
+      if (isMonthFilter) { if (monthKey(t.date) !== dateFilter) return false; }
+      else if (cutoff) { if (t.date < cutoff) return false; }
       if (typeFilter === 'needs-review') {
-        if (t.type !== 'spend') return false;
-        if (t.categorySource === 'user') return false;
-        if (t.categoryConfidence >= confidenceThreshold) return false;
+        if (t.type !== 'spend' || t.categorySource === 'user' || t.categoryConfidence >= confidenceThreshold) return false;
       } else if (typeFilter !== 'all' && t.type !== typeFilter) return false;
-      if (s && !t.merchantRaw.toLowerCase().includes(s) && !t.merchantNormalized?.toLowerCase().includes(s)) return false;
+      if (s && !t.merchantRaw.toLowerCase().includes(s) && !(t.merchantNormalized?.toLowerCase().includes(s)) && !(t.notes?.toLowerCase().includes(s))) return false;
       return true;
     });
-  }, [visibleTxs, typeFilter, monthFilter, search, confidenceThreshold]);
-
-  useEffect(() => { setPage(0); }, [typeFilter, monthFilter, search]);
-
-  const paged = useMemo(() => filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [filtered, page]);
-  const pageCount = Math.ceil(filtered.length / PAGE_SIZE);
+  }, [visibleTxs, typeFilter, dateFilter, search, confidenceThreshold]);
 
   const spend = useMemo(() => visibleTxs.filter(t => t.type === 'spend').reduce((s, t) => s + t.amount, 0), [visibleTxs]);
   const income = useMemo(() => visibleTxs.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0), [visibleTxs]);
   const outstandingTotal = useMemo(() => outstandingEntries.reduce((s, e) => s + e.amount, 0), [outstandingEntries]);
 
-  async function onCategoryChange(tx: Transaction, newCatId: string | null) {
-    const propagate = window.confirm(
-      `Apply "${newCatId ? catMap.get(newCatId)?.name ?? newCatId : 'Uncategorized'}" to all past and future transactions from "${tx.merchantRaw}"?\n\nOK = propagate to all · Cancel = just this one`,
-    );
+  function requestCategoryChange(tx: Transaction, newCatId: string | null) {
+    setPropagateDialog({ tx, newCatId, catName: newCatId ? (catMap.get(newCatId)?.name ?? newCatId) : 'Uncategorized' });
+  }
+
+  async function confirmCategoryChange(propagate: boolean) {
+    if (!propagateDialog) return;
+    const { tx, newCatId } = propagateDialog;
+    setPropagateDialog(null);
     const res = await recategorizeTransaction(tx.id, newCatId, { propagateToMerchant: propagate });
     if (propagate && res.propagated > 0) {
-      setFlash(`Updated ${res.propagated} other transaction${res.propagated === 1 ? '' : 's'} with the same merchant.`);
+      setFlash(`Updated ${res.propagated} other transaction${res.propagated === 1 ? '' : 's'} from the same merchant.`);
       setTimeout(() => setFlash(null), 3500);
     }
   }
@@ -89,13 +114,33 @@ export function TransactionsPage() {
     await db.transactions.delete(tx.id);
   }
 
+  async function onSaveNote(tx: Transaction, note: string) {
+    await db.transactions.update(tx.id, { notes: note.trim() || undefined });
+  }
+
+  async function confirmOwed() {
+    if (!owedTx || !owedName.trim()) return;
+    await db.outstanding.add({
+      id: nanoid(),
+      transactionId: owedTx.id,
+      personName: owedName.trim(),
+      amount: Math.abs(owedTx.amount),
+      createdAt: Date.now(),
+      status: 'outstanding',
+    });
+    setFlash(`${owedName.trim()} owes you ${fmtCAD(Math.abs(owedTx.amount))}.`);
+    setTimeout(() => setFlash(null), 4000);
+    setOwedTx(null);
+    setOwedName('');
+  }
+
   const FILTERS: { id: TypeFilter; label: string }[] = [
     { id: 'all', label: 'All' },
-    { id: 'needs-review', label: 'Needs review' },
+    { id: 'needs-review', label: 'Needs Review' },
     { id: 'spend', label: 'Spend' },
     { id: 'income', label: 'Income' },
     { id: 'transfer', label: 'Transfer' },
-    { id: 'cc-payment', label: 'CC payment' },
+    { id: 'cc-payment', label: 'Credit Card Payment' },
   ];
 
   return (
@@ -108,21 +153,33 @@ export function TransactionsPage() {
           <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>{visibleTxs.length.toLocaleString()} entries</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <select value={monthFilter} onChange={e => { setMonthFilter(e.target.value); }} className="btn btn-ghost" style={{ appearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}>
-            <option value="all">All months</option>
-            {months.map(m => <option key={m} value={m}>{m}</option>)}
+          <select
+            value={dateFilter} onChange={e => setDateFilter(e.target.value)}
+            className="btn btn-ghost"
+            style={{ appearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
+          >
+            <option value="all">All time</option>
+            <option value="this-month">This month</option>
+            <option value="last-30">Last 30 days</option>
+            <option value="last-3m">Last 3 months</option>
+            <option value="ytd">Year to date</option>
+            <optgroup label="By month">
+              {months.map(m => <option key={m} value={m}>{m}</option>)}
+            </optgroup>
           </select>
-          <button className="btn btn-primary"><Icon name="plus" size={14} />Add transaction</button>
+          <button className="btn btn-primary" onClick={() => setShowAddTx(true)}>
+            <Icon name="plus" size={14} />Add transaction
+          </button>
         </div>
       </div>
 
       {/* Stats strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
-          { label: 'Total spend', value: fmtCAD(spend), delta: 0, tone: 'default' as const },
-          { label: 'Income', value: fmtCAD(income), delta: 0, tone: 'accent' as const },
-          { label: 'Needs review', value: `${typeCounts['needs-review']} txns`, sub: `below ${Math.round(confidenceThreshold * 100)}% confidence`, tone: 'warn' as const },
-          { label: 'Outstanding', value: fmtCAD(outstandingTotal), sub: `${outstandingEntries.length} people owe you`, tone: 'default' as const },
+          { label: 'Total spend', value: fmtCAD(spend), tone: 'default' as const },
+          { label: 'Income', value: fmtCAD(income), tone: 'accent' as const },
+          { label: 'Needs review', value: String(typeCounts['needs-review']), sub: `below ${Math.round(confidenceThreshold * 100)}% confidence`, tone: 'warn' as const },
+          { label: 'Outstanding', value: fmtCAD(outstandingTotal), sub: `${outstandingEntries.length} ${outstandingEntries.length === 1 ? 'person owes' : 'people owe'} you`, tone: 'default' as const },
         ].map(s => (
           <div key={s.label} className="glass" style={{ padding: 16 }}>
             <div className="eyebrow" style={{ marginBottom: 6 }}>{s.label}</div>
@@ -133,7 +190,9 @@ export function TransactionsPage() {
       </div>
 
       {flash && (
-        <div style={{ padding: '10px 16px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)', color: 'var(--accent-ink)', fontSize: 13 }}>{flash}</div>
+        <div style={{ padding: '10px 16px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)', color: 'var(--accent-ink)', fontSize: 13 }}>
+          {flash}
+        </div>
       )}
 
       {/* Toolbar */}
@@ -142,181 +201,375 @@ export function TransactionsPage() {
           <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-mute)', pointerEvents: 'none' }}>
             <Icon name="search" size={14} />
           </div>
-          <input className="input" style={{ paddingLeft: 30, width: '100%' }} placeholder="Search merchant…" value={search} onChange={e => setSearch(e.target.value)} />
+          <input className="input" style={{ paddingLeft: 30, width: '100%' }} placeholder="Search merchant or notes…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <div className="seg-control" style={{ flexWrap: 'wrap' }}>
           {FILTERS.map(f => (
             <button key={f.id} className={`seg-btn${typeFilter === f.id ? ' active' : ''}`} onClick={() => setTypeFilter(f.id)}>
               {f.label}
-              <span className="mono" style={{ fontSize: 10, color: typeFilter === f.id ? 'var(--ink-mute)' : 'var(--ink-mute)' }}>
+              <span className="mono" style={{ fontSize: 10, color: 'var(--ink-mute)' }}>
                 {typeCounts[f.id as keyof typeof typeCounts] ?? ''}
               </span>
             </button>
           ))}
         </div>
         <div style={{ flex: 1 }} />
-        <button className="btn btn-ghost"><Icon name="sort" size={12} />Date ↓</button>
-      </div>
-
-      {/* Table */}
-      <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
-        <table className="data">
-          <thead>
-            <tr>
-              <th style={{ width: 80 }}>Date</th>
-              <th style={{ width: 52 }}>Bank</th>
-              <th>Merchant</th>
-              <th style={{ width: 80 }}>Type</th>
-              <th style={{ width: 170 }}>Category</th>
-              <th style={{ width: 110 }}>Confidence</th>
-              <th style={{ width: 110, textAlign: 'right' }}>Amount</th>
-              <th style={{ width: 44 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.length === 0 ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--ink-mute)', fontSize: 13 }}>No transactions match these filters.</td></tr>
-            ) : paged.map(t => (
-              <TxRow
-                key={t.id}
-                tx={t}
-                category={t.categoryId ? catMap.get(t.categoryId) : undefined}
-                categories={categories}
-                confidenceThreshold={confidenceThreshold}
-                onCategoryChange={onCategoryChange}
-                onTypeChange={onTypeChange}
-                onSplit={() => setSplitTx(t)}
-                onHide={onHide}
-                onDelete={onDelete}
-              />
-            ))}
-          </tbody>
-        </table>
-        {pageCount > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--line)', fontSize: 12, color: 'var(--ink-mute)' }}>
-            <div>Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}</div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous</button>
-              <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>Next</button>
-            </div>
+        {filtered.length !== visibleTxs.length && (
+          <div style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
+            {filtered.length.toLocaleString()} of {visibleTxs.length.toLocaleString()}
           </div>
         )}
       </div>
 
+      {/* Table — scrollable */}
+      <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
+          <table className="data" style={{ tableLayout: 'fixed' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+              <tr>
+                <th style={{ width: 80 }}>Date</th>
+                <th style={{ width: 52 }}>Bank</th>
+                <th>Merchant</th>
+                <th style={{ width: 110 }}>Type</th>
+                <th style={{ width: 170 }}>Category</th>
+                <th style={{ width: 110 }}>Confidence</th>
+                <th style={{ width: 110, textAlign: 'right' }}>Amount</th>
+                <th style={{ width: 44 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--ink-mute)', fontSize: 13 }}>No transactions match these filters.</td></tr>
+              ) : filtered.map(t => (
+                <TxRow
+                  key={t.id}
+                  tx={t}
+                  category={t.categoryId ? catMap.get(t.categoryId) : undefined}
+                  categories={categories}
+                  confidenceThreshold={confidenceThreshold}
+                  isOwed={owedTxIds.has(t.id)}
+                  onCategoryChange={requestCategoryChange}
+                  onTypeChange={onTypeChange}
+                  onSplit={() => setSplitTx(t)}
+                  onHide={onHide}
+                  onDelete={onDelete}
+                  onSaveNote={onSaveNote}
+                  onMarkOwed={() => { setOwedTx(t); setOwedName(''); }}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: '8px 20px', borderTop: '1px solid var(--line)', fontSize: 11, color: 'var(--ink-mute)' }}>
+          {filtered.length.toLocaleString()} transactions
+        </div>
+      </div>
+
       {splitTx && <SplitDialog tx={splitTx} onClose={() => setSplitTx(null)} />}
+
+      {/* Categorization propagation dialog */}
+      {propagateDialog && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(10,12,18,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setPropagateDialog(null)}>
+          <div className="glass" style={{ padding: 24, maxWidth: 400, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Update category</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginBottom: 20 }}>
+              Apply <strong style={{ color: 'var(--ink)' }}>{propagateDialog.catName}</strong> to <em>"{propagateDialog.tx.merchantRaw}"</em> — apply to:
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="btn btn-primary" style={{ justifyContent: 'flex-start', padding: '10px 14px' }} autoFocus onClick={() => confirmCategoryChange(true)}>
+                <Icon name="check" size={14} />
+                <div style={{ flex: 1, textAlign: 'left' }}>
+                  <div>All transactions from this merchant</div>
+                  <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.75, marginTop: 1 }}>Saves a merchant rule for future imports too</div>
+                </div>
+              </button>
+              <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', padding: '10px 14px' }} onClick={() => confirmCategoryChange(false)}>
+                <Icon name="transactions" size={14} />
+                <div style={{ textAlign: 'left' }}>Just this one transaction</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mark as owed dialog */}
+      {owedTx && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(10,12,18,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setOwedTx(null)}>
+          <div className="glass" style={{ padding: 24, maxWidth: 380, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Mark as owed</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginBottom: 18 }}>
+              {owedTx.merchantRaw} · <span className="mono">{fmtCAD(Math.abs(owedTx.amount))}</span><br />
+              <span style={{ fontSize: 11 }}>You paid the full amount — who owes you?</span>
+            </div>
+            <input
+              className="input"
+              style={{ width: '100%', marginBottom: 16 }}
+              placeholder="Person's name (e.g. Mom)"
+              value={owedName}
+              onChange={e => setOwedName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') confirmOwed(); if (e.key === 'Escape') setOwedTx(null); }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setOwedTx(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={!owedName.trim()} onClick={confirmOwed}>
+                <Icon name="owed" size={14} />Create owed entry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add transaction modal */}
+      {showAddTx && <AddTxModal categories={categories} onClose={() => setShowAddTx(false)} />}
     </div>
   );
 }
 
 function TxRow({
-  tx, category, categories, confidenceThreshold,
-  onCategoryChange, onTypeChange, onSplit, onHide, onDelete,
+  tx, category, categories, confidenceThreshold, isOwed,
+  onCategoryChange, onTypeChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed,
 }: {
   tx: Transaction;
   category: Category | undefined;
   categories: Category[];
   confidenceThreshold: number;
+  isOwed: boolean;
   onCategoryChange: (tx: Transaction, catId: string | null) => void;
   onTypeChange: (tx: Transaction, type: TxType) => void;
   onSplit: () => void;
   onHide: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
+  onSaveNote: (tx: Transaction, note: string) => void;
+  onMarkOwed: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ right: number; top: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteValue, setNoteValue] = useState(tx.notes ?? '');
   const isIncome = tx.type === 'income';
   const needsReview = tx.type === 'spend' && tx.categorySource !== 'user' && tx.categoryConfidence < confidenceThreshold;
 
   useEffect(() => {
     if (!menuOpen) return;
-    const close = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); };
+    function close(e: MouseEvent) {
+      if (!btnRef.current?.contains(e.target as Node) && !dropdownRef.current?.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [menuOpen]);
 
+  useEffect(() => { setNoteValue(tx.notes ?? ''); }, [tx.notes]);
+
+  function openMenu() {
+    const rect = btnRef.current?.getBoundingClientRect();
+    if (rect) setMenuPos({ right: window.innerWidth - rect.right, top: rect.bottom + 4 });
+    setMenuOpen(true);
+  }
+
+  function saveNote() {
+    setEditingNote(false);
+    onSaveNote(tx, noteValue);
+  }
+
+  const menuItems = [
+    { label: tx.notes ? 'Edit note' : 'Add note', action: () => { setEditingNote(true); setMenuOpen(false); } },
+    { label: tx.split ? 'Edit split' : 'Split between people', action: () => { onSplit(); setMenuOpen(false); } },
+    { label: 'Mark as owed (full amount)', action: () => { onMarkOwed(); setMenuOpen(false); } },
+    { label: tx.hidden ? 'Unhide' : 'Hide', action: () => { onHide(tx); setMenuOpen(false); } },
+    { label: 'Delete', action: () => { onDelete(tx); setMenuOpen(false); }, danger: true },
+  ];
+
   return (
-    <tr style={{ opacity: tx.hidden ? 0.45 : 1 }}>
-      <td className="mono" style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{tx.date.slice(5)}</td>
-      <td><BankLogo bank={tx.bank} size={20} /></td>
-      <td>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 500 }}>{tx.merchantRaw}</span>
-          {needsReview && <span className="chip chip-warn" style={{ fontSize: 10, padding: '1px 6px' }}>review</span>}
-        </div>
-        {tx.split && (
-          <div style={{ fontSize: 11, color: 'oklch(58% 0.1 75)', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Icon name="split" size={10} />Split {tx.split.people} ways · {fmtCAD(tx.split.myShare)} mine
+    <>
+      <tr style={{ opacity: tx.hidden ? 0.45 : 1 }}>
+        <td className="mono" style={{ color: 'var(--ink-mute)', fontSize: 12 }}>{tx.date.slice(5)}</td>
+        <td><BankLogo bank={tx.bank} size={20} /></td>
+        <td>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 500 }}>{tx.merchantRaw}</span>
+            {needsReview && <span className="chip chip-warn" style={{ fontSize: 10, padding: '1px 6px' }}>Review</span>}
+            {isOwed && <span className="chip chip-accent" style={{ fontSize: 10, padding: '1px 6px' }}>Owed</span>}
           </div>
-        )}
-        {tx.notes && <div style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic', marginTop: 2 }}>"{tx.notes}"</div>}
-      </td>
-      <td>
-        <div style={{ position: 'relative', display: 'inline-block' }}>
-          <span className="mono" style={{ fontSize: 11, color: 'var(--ink-soft)', background: 'oklch(50% 0.01 260 / 0.06)', padding: '2px 6px', borderRadius: 6, display: 'inline-block' }}>
-            {tx.type}
-          </span>
-          <select
-            value={tx.type}
-            onChange={e => onTypeChange(tx, e.target.value as TxType)}
-            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
-          >
-            {(['spend','income','transfer','cc-payment'] as TxType[]).map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </div>
-      </td>
-      <td>
-        {tx.type === 'spend' || tx.type === 'income' ? (
-          <div style={{ position: 'relative', display: 'inline-flex' }}>
-            <span className="chip" style={category ? {
-              background: `color-mix(in oklab, ${category.color}, transparent 86%)`,
-              borderColor: `color-mix(in oklab, ${category.color}, transparent 70%)`,
-              color: `color-mix(in oklab, ${category.color}, black 20%)`,
-            } : { color: 'var(--ink-mute)' }}>
-              {category && <CatSwatch color={category.color} size={6} />}
-              {category?.name ?? 'Uncategorized'}
-              <Icon name="chevron_down" size={10} />
-            </span>
-            <select
-              value={tx.categoryId ?? ''}
-              onChange={e => onCategoryChange(tx, e.target.value || null)}
-              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
-            >
-              <option value="">Uncategorized</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-        ) : <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>}
-      </td>
-      <td>
-        {(tx.type === 'spend' || tx.type === 'income') && tx.categoryConfidence > 0
-          ? <ConfBar c={tx.categoryConfidence} />
-          : <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>}
-      </td>
-      <td className="mono" style={{ textAlign: 'right', fontWeight: 500, color: isIncome ? 'oklch(50% 0.15 160)' : 'var(--ink)' }}>
-        {isIncome ? '+' : ''}{fmtCAD(Math.abs(tx.amount))}
-      </td>
-      <td>
-        <div ref={menuRef} style={{ position: 'relative' }}>
-          <button className="btn" style={{ padding: 4, border: 'none', background: 'transparent', color: 'var(--ink-mute)' }} onClick={() => setMenuOpen(v => !v)}>
-            <Icon name="more" size={16} />
-          </button>
-          {menuOpen && (
-            <div style={{ position: 'absolute', right: 0, top: '100%', zIndex: 10, background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 140, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[
-                { label: tx.split ? 'Edit split' : 'Split', action: () => { onSplit(); setMenuOpen(false); } },
-                { label: tx.hidden ? 'Unhide' : 'Hide', action: () => { onHide(tx); setMenuOpen(false); } },
-                { label: 'Delete', action: () => { onDelete(tx); setMenuOpen(false); }, danger: true },
-              ].map(item => (
-                <button key={item.label} onClick={item.action} style={{ textAlign: 'left', padding: '6px 10px', borderRadius: 7, border: 'none', background: 'transparent', fontSize: 12, color: item.danger ? 'var(--danger)' : 'var(--ink)', cursor: 'pointer' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in oklab, white 60%, transparent)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  {item.label}
-                </button>
-              ))}
+          {tx.split && (
+            <div style={{ fontSize: 11, color: 'oklch(58% 0.1 75)', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="split" size={10} />Split {tx.split.people} ways · {fmtCAD(tx.split.myShare)} mine
             </div>
           )}
+          {editingNote ? (
+            <input
+              value={noteValue}
+              onChange={e => setNoteValue(e.target.value)}
+              onBlur={saveNote}
+              onKeyDown={e => { if (e.key === 'Enter') saveNote(); if (e.key === 'Escape') { setEditingNote(false); setNoteValue(tx.notes ?? ''); } }}
+              placeholder="Add a note…"
+              autoFocus
+              className="input"
+              style={{ marginTop: 4, fontSize: 11, padding: '3px 8px', width: '100%', maxWidth: 280 }}
+            />
+          ) : tx.notes ? (
+            <div style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic', marginTop: 2, cursor: 'pointer' }} onClick={() => setEditingNote(true)} title="Click to edit note">
+              "{tx.notes}"
+            </div>
+          ) : null}
+        </td>
+        <td>
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <span className="mono" style={{ fontSize: 11, color: 'var(--ink-soft)', background: 'oklch(50% 0.01 260 / 0.06)', padding: '2px 6px', borderRadius: 6, display: 'inline-block', whiteSpace: 'nowrap' }}>
+              {TYPE_LABEL[tx.type] ?? tx.type}
+            </span>
+            <select value={tx.type} onChange={e => onTypeChange(tx, e.target.value as TxType)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}>
+              {(['spend', 'income', 'transfer', 'cc-payment'] as TxType[]).map(v => <option key={v} value={v}>{TYPE_LABEL[v]}</option>)}
+            </select>
+          </div>
+        </td>
+        <td>
+          {tx.type === 'spend' || tx.type === 'income' ? (
+            <div style={{ position: 'relative', display: 'inline-flex' }}>
+              <span className="chip" style={category ? { background: `color-mix(in oklab, ${category.color}, transparent 86%)`, borderColor: `color-mix(in oklab, ${category.color}, transparent 70%)`, color: `color-mix(in oklab, ${category.color}, black 20%)` } : { color: 'var(--ink-mute)' }}>
+                {category && <CatSwatch color={category.color} size={6} />}
+                {category?.name ?? 'Uncategorized'}
+                <Icon name="chevron_down" size={10} />
+              </span>
+              <select value={tx.categoryId ?? ''} onChange={e => onCategoryChange(tx, e.target.value || null)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}>
+                <option value="">Uncategorized</option>
+                {categories.filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          ) : <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>}
+        </td>
+        <td>
+          {(tx.type === 'spend' || tx.type === 'income') && tx.categoryConfidence > 0
+            ? <ConfBar c={tx.categoryConfidence} />
+            : <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>}
+        </td>
+        <td className="mono" style={{ textAlign: 'right', fontWeight: 500, color: isIncome ? 'oklch(50% 0.15 160)' : 'var(--ink)' }}>
+          {isIncome ? '+' : ''}{fmtCAD(Math.abs(tx.amount))}
+        </td>
+        <td>
+          <button ref={btnRef} className="btn" style={{ padding: 4, border: 'none', background: 'transparent', color: 'var(--ink-mute)' }} onClick={openMenu}>
+            <Icon name="more" size={16} />
+          </button>
+        </td>
+      </tr>
+      {menuOpen && menuPos && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{ position: 'fixed', right: menuPos.right, top: menuPos.top, zIndex: 9999, background: 'color-mix(in oklab, white 85%, transparent)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 200, display: 'flex', flexDirection: 'column', gap: 2 }}
+        >
+          {menuItems.map(item => (
+            <button key={item.label} onClick={item.action} style={{ textAlign: 'left', padding: '6px 10px', borderRadius: 7, border: 'none', background: 'transparent', fontSize: 12, color: item.danger ? 'var(--danger)' : 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in oklab, white 60%, transparent)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              {item.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+function AddTxModal({ categories, onClose }: { categories: Category[]; onClose: () => void }) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [merchant, setMerchant] = useState('');
+  const [amount, setAmount] = useState('');
+  const [type, setType] = useState<TxType>('spend');
+  const [categoryId, setCategoryId] = useState('');
+  const [bank, setBank] = useState<Bank>('amex');
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function save() {
+    const amt = parseFloat(amount);
+    if (!merchant.trim()) { setErr('Merchant name is required.'); return; }
+    if (!Number.isFinite(amt) || amt <= 0) { setErr('Enter a valid amount.'); return; }
+    setBusy(true);
+    setErr('');
+    const actualAmount = type === 'income' ? -amt : amt;
+    await db.transactions.add({
+      id: nanoid(),
+      bank,
+      importBatchId: 'manual',
+      date,
+      merchantRaw: merchant.trim(),
+      merchantNormalized: merchant.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(),
+      amount: actualAmount,
+      categoryId: categoryId || null,
+      categoryConfidence: categoryId ? 1 : 0,
+      categorySource: categoryId ? 'user' : 'uncategorized',
+      type,
+      dedupeKey: `manual-${nanoid()}`,
+      notes: notes.trim() || undefined,
+      hidden: false,
+    });
+    onClose();
+  }
+
+  const F: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 };
+  const L: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '0.08em' };
+  const sel: React.CSSProperties = { width: '100%', padding: '7px 11px', borderRadius: 10, border: '1px solid var(--line-strong)', background: 'color-mix(in oklab, white 60%, transparent)', fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--sans)' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(10,12,18,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
+      <div className="glass" style={{ padding: 24, maxWidth: 460, width: '90%' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 20 }}>Add transaction</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div style={F}>
+            <label style={L}>Date</label>
+            <input type="date" className="input" value={date} onChange={e => setDate(e.target.value)} style={{ width: '100%' }} />
+          </div>
+          <div style={F}>
+            <label style={L}>Bank</label>
+            <select style={sel} value={bank} onChange={e => setBank(e.target.value as Bank)}>
+              <option value="amex">American Express</option>
+              <option value="bmo">BMO</option>
+              <option value="scotia">Scotiabank</option>
+            </select>
+          </div>
+          <div style={{ ...F, gridColumn: '1 / -1' }}>
+            <label style={L}>Merchant / description</label>
+            <input className="input" style={{ width: '100%' }} placeholder="e.g. Shoppers Drug Mart" value={merchant} onChange={e => setMerchant(e.target.value)} autoFocus />
+          </div>
+          <div style={F}>
+            <label style={L}>Amount</label>
+            <input type="number" className="input" style={{ width: '100%' }} placeholder="0.00" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
+          </div>
+          <div style={F}>
+            <label style={L}>Type</label>
+            <select style={sel} value={type} onChange={e => setType(e.target.value as TxType)}>
+              <option value="spend">Spend</option>
+              <option value="income">Income</option>
+              <option value="transfer">Transfer</option>
+              <option value="cc-payment">Credit Card Payment</option>
+            </select>
+          </div>
+          <div style={{ ...F, gridColumn: '1 / -1' }}>
+            <label style={L}>Category</label>
+            <select style={sel} value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+              <option value="">Uncategorized</option>
+              {categories.filter(c => !c.archived && (type === 'income' ? c.isIncome : !c.isIncome)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div style={{ ...F, gridColumn: '1 / -1' }}>
+            <label style={L}>Notes (optional)</label>
+            <input className="input" style={{ width: '100%' }} placeholder="e.g. Mom's medication pickup" value={notes} onChange={e => setNotes(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') save(); }} />
+          </div>
         </div>
-      </td>
-    </tr>
+        {err && <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 12 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={busy} onClick={save}>
+            <Icon name="plus" size={13} />Add transaction
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

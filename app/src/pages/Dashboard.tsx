@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import {
-  fmtCAD, fmtCompact, currentMonthKey, prevMonth, lastNMonths,
+  fmtCAD, fmtCompact, currentMonthKey, prevMonth, lastNMonths, monthKey,
   txsInMonth, categoryTotals, totalSpend, totalIncome,
 } from '../lib/money';
 import type { Category } from '../types';
@@ -22,11 +22,21 @@ export function DashboardPage({ onNavigate }: Props) {
   const txs = useLiveQuery(() => db.transactions.toArray(), []) ?? [];
   const categories = useLiveQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
   const budgets = useLiveQuery(() => db.budgets.toArray(), []) ?? [];
+  const thresholdSetting = useLiveQuery(() => db.settings.get('confidenceThreshold'), []);
+  const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
+
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
+
+  const availableMonths = useMemo(() => {
+    const set = new Set(txs.map(t => monthKey(t.date)));
+    set.add(currentMonthKey());
+    return Array.from(set).sort().reverse();
+  }, [txs]);
 
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
   const budgetMap = useMemo(() => new Map(budgets.map(b => [b.categoryId, b.monthlyLimit])), [budgets]);
 
-  const thisMonth = currentMonthKey();
+  const thisMonth = selectedMonth;
   const prevMonthKey = prevMonth(thisMonth);
 
   const monthTxs = useMemo(() => txsInMonth(txs, thisMonth), [txs, thisMonth]);
@@ -120,10 +130,12 @@ export function DashboardPage({ onNavigate }: Props) {
     [txs, sixMonths],
   );
 
-  // Budget burndown
+  // Budget burndown — pace markers relative to selected month
   const today = new Date();
-  const dayOfMonth = today.getDate();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const isCurrentMonth = selectedMonth === currentMonthKey();
+  const [selYear, selMonthNum] = selectedMonth.split('-').map(Number);
+  const dayOfMonth = isCurrentMonth ? today.getDate() : new Date(selYear, selMonthNum, 0).getDate();
+  const daysInMonth = new Date(selYear, selMonthNum, 0).getDate();
   const paceFrac = dayOfMonth / daysInMonth;
 
   const budgetRows = useMemo(() =>
@@ -139,15 +151,15 @@ export function DashboardPage({ onNavigate }: Props) {
     [categories, budgetMap, totals],
   );
 
-  // Recent activity
+  // Recent activity — scoped to selected month
   const recentTxs = useMemo(() =>
-    [...txs].filter(t => !t.hidden).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6),
+    monthTxs.filter(t => !t.hidden).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6),
     [txs],
   );
 
   const needsReviewCount = useMemo(() =>
-    txs.filter(t => t.type === 'spend' && !t.hidden && t.categorySource !== 'user' && t.categoryConfidence < 0.9).length,
-    [txs],
+    txs.filter(t => t.type === 'spend' && !t.hidden && t.categorySource !== 'user' && t.categoryConfidence < confidenceThreshold).length,
+    [txs, confidenceThreshold],
   );
 
   return (
@@ -159,8 +171,19 @@ export function DashboardPage({ onNavigate }: Props) {
           <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>{greeting}, Youssef</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost"><Icon name="calendar" size={14} />{monthAbbr(thisMonth)} {thisMonth.slice(0, 4)}</button>
-          <button className="btn btn-ghost"><Icon name="download" size={14} />Export</button>
+          <div style={{ position: 'relative' }}>
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="btn btn-ghost"
+              style={{ appearance: 'none', paddingLeft: 32, paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
+            >
+              {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--ink-mute)' }}>
+              <Icon name="calendar" size={14} />
+            </div>
+          </div>
           <button className="btn btn-primary" onClick={() => onNavigate?.('import')}><Icon name="upload" size={14} />Import statement</button>
         </div>
       </div>
@@ -198,8 +221,7 @@ export function DashboardPage({ onNavigate }: Props) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn btn-primary" onClick={() => onNavigate?.('import')}><Icon name="upload" size={14} />Import</button>
-            <button className="btn" style={{ background: 'oklch(100% 0 0 / 0.1)', color: 'white', border: '1px solid oklch(100% 0 0 / 0.15)' }}><Icon name="split" size={14} />Split</button>
+            <button className="btn" style={{ background: 'oklch(100% 0 0 / 0.1)', color: 'white', border: '1px solid oklch(100% 0 0 / 0.15)' }} onClick={() => onNavigate?.('transactions')}><Icon name="transactions" size={14} />View all</button>
           </div>
         </div>
       </div>
@@ -242,13 +264,13 @@ export function DashboardPage({ onNavigate }: Props) {
                   <div className="mono" style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em' }}>{fmtCompact(spend)}</div>
                 </div>
               </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ flex: 1, minWidth: 0, maxWidth: 220, display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {donutData.slice(0, 5).map(d => (
-                  <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                  <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
                     <CatSwatch color={d.color} size={7} />
-                    <span style={{ flex: 1, color: 'var(--ink-2)' }}>{d.label}</span>
-                    <span className="mono" style={{ color: 'var(--ink-2)', fontWeight: 500 }}>{fmtCompact(d.value)}</span>
-                    <span className="mono" style={{ color: 'var(--ink-mute)', fontSize: 10, width: 32, textAlign: 'right' }}>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-2)' }}>{d.label}</span>
+                    <span className="mono" style={{ flexShrink: 0, color: 'var(--ink-2)', fontWeight: 500, fontSize: 11 }}>{fmtCompact(d.value)}</span>
+                    <span className="mono" style={{ flexShrink: 0, color: 'var(--ink-mute)', fontSize: 10, width: 26, textAlign: 'right' }}>
                       {spend > 0 ? ((d.value / spend) * 100).toFixed(0) : 0}%
                     </span>
                   </div>
@@ -338,7 +360,7 @@ export function DashboardPage({ onNavigate }: Props) {
           <div>
             <div style={{ fontWeight: 500, fontSize: 14 }}>Recent activity</div>
             <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>
-              Newest first{needsReviewCount > 0 && ` · ${needsReviewCount} needing review`}
+              Newest first{needsReviewCount > 0 && ` · ${needsReviewCount} needing review`}{selectedMonth !== currentMonthKey() && ` · ${monthFull(selectedMonth)}`}
             </div>
           </div>
           <button className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => onNavigate?.('transactions')}>View all</button>
