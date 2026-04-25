@@ -1,43 +1,65 @@
 import { useRef, useState } from 'react';
+import { Icon } from './Primitives';
 
 interface Props {
   onFiles: (files: File[]) => void;
   accept?: string;
+  busy?: boolean;
 }
 
-export function DropZone({ onFiles, accept = '.csv,.xls,.xlsx' }: Props) {
+export function DropZone({ onFiles, accept = '.csv,.xls,.xlsx', busy = false }: Props) {
   const [drag, setDrag] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
 
+  function handleFiles(files: File[]) {
+    if (files.length && !busy) onFiles(files);
+  }
+
   return (
     <div
+      className="glass"
       onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
       onDragLeave={() => setDrag(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDrag(false);
-        const files = Array.from(e.dataTransfer.files);
-        if (files.length) onFiles(files);
+      onDrop={(e) => { e.preventDefault(); setDrag(false); handleFiles(Array.from(e.dataTransfer.files)); }}
+      style={{
+        padding: 36,
+        textAlign: 'center',
+        border: drag
+          ? '1.5px dashed var(--accent)'
+          : '1.5px dashed color-mix(in oklab, var(--accent), transparent 50%)',
+        background: drag
+          ? 'color-mix(in oklab, var(--accent-soft), white 30%)'
+          : 'color-mix(in oklab, var(--accent-soft), white 50%)',
+        transition: 'border-color .15s, background .15s',
+        cursor: busy ? 'default' : 'pointer',
       }}
-      onClick={() => ref.current?.click()}
-      className={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition ${
-        drag ? 'border-sky-500 bg-sky-50' : 'border-slate-300 bg-white hover:border-slate-400'
-      }`}
+      onClick={() => !busy && ref.current?.click()}
     >
-      <div className="text-slate-600">
-        <div className="text-lg font-medium text-slate-800">Drop CSV / XLS here</div>
-        <div className="mt-1 text-sm">Amex (.xls), BMO (.csv), Scotia (.csv) — multiple files at once is fine</div>
-        <div className="mt-2 text-xs text-slate-500">or click to pick</div>
+      <div style={{ width: 52, height: 52, borderRadius: 14, background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-ink)', marginBottom: 14 }}>
+        <Icon name="upload" size={22} />
       </div>
+      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 4 }}>
+        {busy ? 'Parsing…' : 'Drop CSV files anywhere'}
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginBottom: 16 }}>
+        Supports Amex, BMO, and Scotiabank exports · up to 20 files
+      </div>
+      {!busy && (
+        <button
+          className="btn btn-primary"
+          onClick={(e) => { e.stopPropagation(); ref.current?.click(); }}
+        >
+          Choose files
+        </button>
+      )}
       <input
         ref={ref}
         type="file"
         multiple
         accept={accept}
-        className="hidden"
+        style={{ display: 'none' }}
         onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
-          if (files.length) onFiles(files);
+          handleFiles(Array.from(e.target.files ?? []));
           if (ref.current) ref.current.value = '';
         }}
       />

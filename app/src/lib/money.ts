@@ -55,6 +55,12 @@ export function txsInMonth(txs: Transaction[], key: string): Transaction[] {
   return txs.filter((t) => monthKey(t.date) === key);
 }
 
+export function fmtCompact(n: number): string {
+  if (n >= 10000) return `$${(n / 1000).toFixed(0)}k`;
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`;
+  return `$${Math.round(n)}`;
+}
+
 export function lastNMonths(n: number, today = new Date()): string[] {
   const keys: string[] = [];
   let k = currentMonthKey(today);
