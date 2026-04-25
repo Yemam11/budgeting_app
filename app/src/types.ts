@@ -1,0 +1,78 @@
+export type Bank = 'amex' | 'bmo' | 'scotia';
+
+export type TxType = 'spend' | 'income' | 'transfer' | 'cc-payment';
+
+export type CategorySource = 'user' | 'merchant-rule' | 'seed-rule' | 'uncategorized';
+
+export interface SplitInfo {
+  people: number;
+  myShare: number;
+  perPerson?: { name: string; amount: number }[];
+  originalAmount: number;
+}
+
+export interface Transaction {
+  id: string;
+  bank: Bank;
+  importBatchId: string;
+  date: string;
+  postedDate?: string;
+  merchantRaw: string;
+  merchantNormalized: string;
+  amount: number;
+  categoryId: string | null;
+  categoryConfidence: number;
+  categorySource: CategorySource;
+  type: TxType;
+  split?: SplitInfo;
+  notes?: string;
+  hidden?: boolean;
+  dedupeKey: string;
+  rawRow?: Record<string, unknown>;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+  archived?: boolean;
+  order: number;
+  isIncome?: boolean;
+}
+
+export interface MerchantRule {
+  merchantNormalized: string;
+  categoryId: string;
+  source: 'user' | 'seed';
+  hitCount: number;
+  lastUpdated: number;
+}
+
+export interface Budget {
+  categoryId: string;
+  monthlyLimit: number;
+}
+
+export interface ImportBatch {
+  id: string;
+  bank: Bank;
+  filename: string;
+  importedAt: number;
+  count: number;
+}
+
+export interface OutstandingEntry {
+  id: string;
+  transactionId: string;
+  personName: string;
+  amount: number;
+  createdAt: number;
+  status: 'outstanding' | 'proposed-settled' | 'settled';
+  settledByTransactionId?: string;
+  settledAt?: number;
+}
+
+export interface AppSetting {
+  key: string;
+  value: unknown;
+}

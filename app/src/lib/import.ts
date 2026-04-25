@@ -1,0 +1,117 @@
+import { nanoid } from 'nanoid';
+import { db } from '../db';
+import type { Transaction, MerchantRule, ImportBatch } from '../types';
+import { parseFile } from '../parsers';
+import type { ParseResult } from '../parsers';
+import { normalizeMerchant, makeDedupeKey } from './normalize';
+import { categorize } from './categorizer';
+
+export interface ImportPreview {
+  filename: string;
+  parseResult: ParseResult;
+  candidates: Transaction[];
+  duplicates: number;
+  newCount: number;
+  warnings: string[];
+}
+
+export async function buildPreview(file: File): Promise<ImportPreview> {
+  const parseResult = await parseFile(file);
+
+  const existingKeys = new Set<string>(
+    (await db.transactions.toArray()).map((t) => t.dedupeKey),
+  );
+
+  const merchantRulesArr = await db.merchantRules.toArray();
+  const merchantRules = new Map<string, MerchantRule>(
+    merchantRulesArr.map((r) => [r.merchantNormalized, r]),
+  );
+
+  const batchId = nanoid();
+  const candidates: Transaction[] = [];
+  const dupSet = new Set<string>();
+  let duplicates = 0;
+
+  for (const r of parseResult.rows) {
+    const merchantNormalized = normalizeMerchant(r.merchantRaw);
+    const dedupeKey = makeDedupeKey({
+      bank: r.bank,
+      date: r.date,
+      amount: r.amount,
+      rawDesc: r.merchantRaw,
+    });
+
+    if (existingKeys.has(dedupeKey) || dupSet.has(dedupeKey)) {
+      duplicates++;
+      continue;
+    }
+    dupSet.add(dedupeKey);
+
+    const descForCat = r.descriptionForCategorization ?? r.merchantRaw;
+    const cat = categorize(merchantNormalized, descForCat, r.type, merchantRules);
+
+    candidates.push({
+      id: nanoid(),
+      bank: r.bank,
+      importBatchId: batchId,
+      date: r.date,
+      postedDate: r.postedDate,
+      merchantRaw: r.merchantRaw,
+      merchantNormalized,
+      amount: r.amount,
+      categoryId: cat.categoryId,
+      categoryConfidence: cat.confidence,
+      categorySource: cat.source,
+      type: r.type,
+      dedupeKey,
+      rawRow: r.rawRow,
+    });
+  }
+
+  return {
+    filename: file.name,
+    parseResult,
+    candidates,
+    duplicates,
+    newCount: candidates.length,
+    warnings: parseResult.warnings,
+  };
+}
+
+export async function commitImport(preview: ImportPreview): Promise<void> {
+  if (preview.candidates.length === 0) return;
+
+  const batch: ImportBatch = {
+    id: preview.candidates[0].importBatchId,
+    bank: preview.parseResult.bank,
+    filename: preview.filename,
+    importedAt: Date.now(),
+    count: preview.candidates.length,
+  };
+
+  await db.transaction(
+    'rw',
+    [db.transactions, db.importBatches, db.merchantRules],
+    async () => {
+      await db.importBatches.add(batch);
+      await db.transactions.bulkAdd(preview.candidates);
+
+      const updates: Record<string, MerchantRule> = {};
+      for (const t of preview.candidates) {
+        if (!t.merchantNormalized || !t.categoryId) continue;
+        if (t.categorySource !== 'merchant-rule' && t.categorySource !== 'user') continue;
+        const existing = updates[t.merchantNormalized] ?? (await db.merchantRules.get(t.merchantNormalized));
+        if (existing) {
+          updates[t.merchantNormalized] = {
+            ...existing,
+            hitCount: (existing.hitCount ?? 0) + 1,
+            lastUpdated: Date.now(),
+          };
+        }
+      }
+      if (Object.keys(updates).length) {
+        await db.merchantRules.bulkPut(Object.values(updates));
+      }
+    },
+  );
+}
