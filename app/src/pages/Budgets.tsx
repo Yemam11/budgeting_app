@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import { fmtCAD, categoryTotals, currentMonthKey, txsInMonth } from '../lib/money';
 import { Icon, CatSwatch, Delta } from '../components/Primitives';
@@ -8,9 +8,9 @@ const MONTH_FULL = ['January','February','March','April','May','June','July','Au
 const monthLabel = (k: string) => `${MONTH_FULL[parseInt(k.slice(5, 7), 10) - 1]} ${k.slice(0, 4)}`;
 
 export function BudgetsPage() {
-  const categories = useLiveQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
-  const budgets = useLiveQuery(() => db.budgets.toArray(), []) ?? [];
-  const txs = useLiveQuery(() => db.transactions.toArray(), []) ?? [];
+  const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
+  const budgets = useQuery(() => db.budgets.toArray(), []) ?? [];
+  const txs = useQuery(() => db.transactions.toArray(), []) ?? [];
   const [monthKeyState, setMonthKeyState] = useState(currentMonthKey());
   const [editingId, setEditingId] = useState<string | null>(null);
 

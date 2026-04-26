@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import { fmtCAD } from '../lib/money';
 import { Icon } from '../components/Primitives';
@@ -9,8 +9,8 @@ import {
 } from '../lib/outstanding';
 
 export function OutstandingPage() {
-  const entries = useLiveQuery(() => db.outstanding.toArray(), []) ?? [];
-  const txs = useLiveQuery(() => db.transactions.toArray(), []) ?? [];
+  const entries = useQuery(() => db.outstanding.toArray(), []) ?? [];
+  const txs = useQuery(() => db.transactions.toArray(), []) ?? [];
   const [proposals, setProposals] = useState<MatchProposal[]>([]);
 
   useEffect(() => {

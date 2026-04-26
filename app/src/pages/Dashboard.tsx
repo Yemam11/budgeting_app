@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import {
   fmtCAD, fmtCompact, currentMonthKey, prevMonth, lastNMonths, monthKey,
@@ -19,10 +19,10 @@ const monthFull = (k: string) => {
 interface Props { onNavigate?: (tab: string) => void }
 
 export function DashboardPage({ onNavigate }: Props) {
-  const txs = useLiveQuery(() => db.transactions.toArray(), []) ?? [];
-  const categories = useLiveQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
-  const budgets = useLiveQuery(() => db.budgets.toArray(), []) ?? [];
-  const thresholdSetting = useLiveQuery(() => db.settings.get('confidenceThreshold'), []);
+  const txs = useQuery(() => db.transactions.toArray(), []) ?? [];
+  const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
+  const budgets = useQuery(() => db.budgets.toArray(), []) ?? [];
+  const thresholdSetting = useQuery(() => db.settings.get('confidenceThreshold'), []);
   const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());

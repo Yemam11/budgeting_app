@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useQuery } from '../hooks/useQuery';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
 import type { Bank, Category, Transaction, TxType } from '../types';
@@ -13,8 +13,13 @@ const TYPE_LABEL: Record<string, string> = {
   spend: 'Spend',
   income: 'Income',
   transfer: 'Transfer',
-  'cc-payment': 'Credit Card Payment',
+  'cc-payment': 'CC Payment',
   'needs-review': 'Needs Review',
+};
+
+const TYPE_LABEL_FULL: Record<string, string> = {
+  ...TYPE_LABEL,
+  'cc-payment': 'Credit Card Payment',
 };
 
 type TypeFilter = 'all' | TxType | 'needs-review';
@@ -31,10 +36,10 @@ function getDateCutoff(preset: DatePreset): string | null {
 }
 
 export function TransactionsPage() {
-  const txs = useLiveQuery(() => db.transactions.orderBy('date').reverse().toArray(), []) ?? [];
-  const categories = useLiveQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
-  const outstandingEntries = useLiveQuery(() => db.outstanding.where('status').notEqual('settled').toArray(), []) ?? [];
-  const thresholdSetting = useLiveQuery(() => db.settings.get('confidenceThreshold'), []);
+  const txs = useQuery(() => db.transactions.orderBy('date').reverse().toArray(), []) ?? [];
+  const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
+  const outstandingEntries = useQuery(() => db.outstanding.where('status').notEqual('settled').toArray(), []) ?? [];
+  const thresholdSetting = useQuery(() => db.settings.get('confidenceThreshold'), []);
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
   const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
 
@@ -418,12 +423,12 @@ function TxRow({
           ) : null}
         </td>
         <td>
-          <div style={{ position: 'relative', display: 'inline-block' }}>
-            <span className="mono" style={{ fontSize: 11, color: 'var(--ink-soft)', background: 'oklch(50% 0.01 260 / 0.06)', padding: '2px 6px', borderRadius: 6, display: 'inline-block', whiteSpace: 'nowrap' }}>
+          <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+            <span className="mono" style={{ fontSize: 11, color: 'var(--ink-soft)', background: 'oklch(50% 0.01 260 / 0.06)', padding: '2px 6px', borderRadius: 6, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 94 }}>
               {TYPE_LABEL[tx.type] ?? tx.type}
             </span>
             <select value={tx.type} onChange={e => onTypeChange(tx, e.target.value as TxType)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}>
-              {(['spend', 'income', 'transfer', 'cc-payment'] as TxType[]).map(v => <option key={v} value={v}>{TYPE_LABEL[v]}</option>)}
+              {(['spend', 'income', 'transfer', 'cc-payment'] as TxType[]).map(v => <option key={v} value={v}>{TYPE_LABEL_FULL[v]}</option>)}
             </select>
           </div>
         </td>

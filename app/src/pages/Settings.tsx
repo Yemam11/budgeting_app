@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import type { Category } from '../types';
 import { bulkRecategorizeByCategory } from '../lib/recategorize';
@@ -25,10 +25,10 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
 }
 
 export function SettingsPage() {
-  const categories = useLiveQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
-  const txCount = useLiveQuery(() => db.transactions.count(), []) ?? 0;
+  const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
+  const txCount = useQuery(() => db.transactions.count(), []) ?? 0;
 
-  const rawThreshold = useLiveQuery(() => db.settings.get('confidenceThreshold'), []);
+  const rawThreshold = useQuery(() => db.settings.get('confidenceThreshold'), []);
   const confidenceThreshold = rawThreshold ? Number(rawThreshold.value) : 0.85;
 
   const [editing, setEditing] = useState<Category | null>(null);

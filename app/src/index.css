@@ -191,7 +191,9 @@ table.data thead th {
   text-align: left; font-weight: 500; font-size: 11px;
   letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-mute);
   padding: 10px 16px; border-bottom: 1px solid var(--line);
-  background: color-mix(in oklab, white 40%, transparent);
+  background: color-mix(in oklab, white 72%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 table.data tbody td {
   padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: middle;

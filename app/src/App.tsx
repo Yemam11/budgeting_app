@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useQuery } from './hooks/useQuery';
 import { ensureSeeded } from './lib/seed';
 import { db } from './db';
 import { DashboardPage } from './pages/Dashboard';
@@ -27,7 +27,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [ready, setReady] = useState(false);
 
-  const outstandingCount = useLiveQuery(
+  const outstandingCount = useQuery(
     () => db.outstanding.where('status').notEqual('settled').count(), []
   ) ?? 0;
 

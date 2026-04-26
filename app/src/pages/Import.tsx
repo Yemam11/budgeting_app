@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import { DropZone } from '../components/DropZone';
 import { buildPreview, commitImport, type ImportPreview } from '../lib/import';
@@ -18,7 +18,7 @@ export function ImportPage() {
   const [busy, setBusy] = useState(false);
   const [committed, setCommitted] = useState<string[]>([]);
 
-  const batches = useLiveQuery(
+  const batches = useQuery(
     () => db.importBatches.orderBy('importedAt').reverse().toArray(), []
   ) ?? [];
 

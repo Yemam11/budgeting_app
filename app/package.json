@@ -4,15 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -n API,UI -c cyan,green \"node server.js\" \"vite\"",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "concurrently": "^9.1.0",
     "date-fns": "^3.6.0",
-    "dexie": "^4.0.8",
-    "dexie-react-hooks": "^1.1.7",
+    "express": "^4.21.0",
     "nanoid": "^5.0.7",
     "papaparse": "^5.4.1",
     "react": "^18.3.1",
