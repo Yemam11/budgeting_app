@@ -1,6 +1,11 @@
 # Real bank statement exports — never commit
 sample_extracts/
 
+# Local SQLite database — contains personal financial data
+data/
+*.db
+*.sqlite
+
 # Dependencies
 app/node_modules/
 
