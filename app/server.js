@@ -10,6 +10,7 @@ if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
 const sqldb = new DatabaseSync(join(DATA_DIR, 'budget.db'));
 sqldb.exec('PRAGMA journal_mode = WAL;');
+try { sqldb.exec('ALTER TABLE transactions ADD COLUMN spreadMonths INTEGER'); } catch {}
 
 sqldb.exec(`
   CREATE TABLE IF NOT EXISTS transactions (
@@ -71,7 +72,14 @@ sqldb.exec(`
     key TEXT PRIMARY KEY,
     value TEXT
   );
+  CREATE TABLE IF NOT EXISTS contacts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    createdAt INTEGER
+  );
 `);
+try { sqldb.exec('ALTER TABLE import_batches ADD COLUMN dateFrom TEXT'); } catch {}
+try { sqldb.exec('ALTER TABLE import_batches ADD COLUMN dateTo TEXT'); } catch {}
 
 const TABLES = {
   transactions:     { sql: 'transactions',   pk: 'id' },
@@ -81,6 +89,7 @@ const TABLES = {
   'import-batches': { sql: 'import_batches', pk: 'id' },
   outstanding:      { sql: 'outstanding',    pk: 'id' },
   settings:         { sql: 'settings',       pk: 'key' },
+  contacts:         { sql: 'contacts',       pk: 'id' },
 };
 
 const QUOTED_COLS = new Set(['order']);
@@ -112,6 +121,7 @@ function fromSql(table, row) {
         hidden: row.hidden === 1,
         amount: Number(row.amount),
         categoryConfidence: Number(row.categoryConfidence || 0),
+        spreadMonths: row.spreadMonths != null ? Number(row.spreadMonths) : undefined,
       };
     case 'categories':
       return { ...row, archived: row.archived === 1, isIncome: row.isIncome === 1, order: Number(row.order) };

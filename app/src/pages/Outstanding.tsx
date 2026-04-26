@@ -149,13 +149,26 @@ export function OutstandingPage() {
                   <td className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>{src?.date ?? '—'}</td>
                   <td className="mono" style={{ textAlign: 'right', fontWeight: 500 }}>{fmtCAD(e.amount)}</td>
                   <td style={{ textAlign: 'right' }}>
-                    <button
-                      className="btn btn-ghost"
-                      style={{ fontSize: 11, padding: '4px 10px' }}
-                      onClick={() => manuallySettle(e.id)}
-                    >
-                      Mark paid
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: 11, padding: '4px 10px', color: 'var(--danger)', borderColor: 'color-mix(in oklab, var(--danger), transparent 70%)' }}
+                        onClick={async () => {
+                          if (window.confirm(`Remove the owed entry for ${e.personName} (${fmtCAD(e.amount)})?`)) {
+                            await db.outstanding.delete(e.id);
+                          }
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: 11, padding: '4px 10px' }}
+                        onClick={() => manuallySettle(e.id)}
+                      >
+                        Mark paid
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

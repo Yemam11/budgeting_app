@@ -7,10 +7,11 @@ import { ImportPage } from './pages/Import';
 import { TransactionsPage } from './pages/Transactions';
 import { BudgetsPage } from './pages/Budgets';
 import { OutstandingPage } from './pages/Outstanding';
+import { ContactsPage } from './pages/Contacts';
 import { SettingsPage } from './pages/Settings';
 import { Icon } from './components/Primitives';
 
-type Tab = 'dashboard' | 'import' | 'transactions' | 'budgets' | 'outstanding' | 'settings';
+type Tab = 'dashboard' | 'import' | 'transactions' | 'budgets' | 'outstanding' | 'contacts' | 'settings';
 
 const NAV: ({ section: string } | { id: Tab; label: string; icon: string })[] = [
   { section: 'General' },
@@ -20,6 +21,7 @@ const NAV: ({ section: string } | { id: Tab; label: string; icon: string })[] = 
   { section: 'Tools' },
   { id: 'import', label: 'Import', icon: 'import' },
   { id: 'outstanding', label: 'Owed to you', icon: 'owed' },
+  { id: 'contacts', label: 'Contacts', icon: 'bank' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -63,7 +65,7 @@ export default function App() {
             <div style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--accent)', transform: 'rotate(45deg)' }} />
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.02em' }}>Ledger</div>
+            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.02em' }}>WealthWise</div>
             <div className="eyebrow" style={{ letterSpacing: '0.08em', marginTop: 1 }}>Local · Private</div>
           </div>
         </div>
@@ -111,12 +113,15 @@ export default function App() {
       </aside>
 
       <main style={{ flex: 1, overflow: 'auto', padding: '24px 28px 40px' }}>
-        {tab === 'dashboard' && <DashboardPage onNavigate={(t) => setTab(t as Tab)} />}
-        {tab === 'import' && <ImportPage />}
-        {tab === 'transactions' && <TransactionsPage />}
-        {tab === 'budgets' && <BudgetsPage />}
-        {tab === 'outstanding' && <OutstandingPage />}
-        {tab === 'settings' && <SettingsPage />}
+        <div style={{ maxWidth: 1440, marginLeft: 'auto', marginRight: 'auto' }}>
+          {tab === 'dashboard' && <DashboardPage onNavigate={(t) => setTab(t as Tab)} />}
+          {tab === 'import' && <ImportPage />}
+          {tab === 'transactions' && <TransactionsPage />}
+          {tab === 'budgets' && <BudgetsPage />}
+          {tab === 'outstanding' && <OutstandingPage />}
+          {tab === 'contacts' && <ContactsPage />}
+          {tab === 'settings' && <SettingsPage />}
+        </div>
       </main>
     </div>
   );

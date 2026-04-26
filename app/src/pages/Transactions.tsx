@@ -40,11 +40,14 @@ export function TransactionsPage() {
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
   const outstandingEntries = useQuery(() => db.outstanding.where('status').notEqual('settled').toArray(), []) ?? [];
   const thresholdSetting = useQuery(() => db.settings.get('confidenceThreshold'), []);
+  const contacts = useQuery(() => db.contacts.toArray(), []) ?? [];
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
   const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [dateFilter, setDateFilter] = useState<DatePreset>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [search, setSearch] = useState('');
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -77,15 +80,21 @@ export function TransactionsPage() {
     const cutoff = getDateCutoff(dateFilter);
     const isMonthFilter = /^\d{4}-\d{2}$/.test(dateFilter);
     return visibleTxs.filter(t => {
-      if (isMonthFilter) { if (monthKey(t.date) !== dateFilter) return false; }
-      else if (cutoff) { if (t.date < cutoff) return false; }
+      if (dateFilter === 'custom') {
+        if (customFrom && t.date < customFrom) return false;
+        if (customTo && t.date > customTo) return false;
+      } else if (isMonthFilter) {
+        if (monthKey(t.date) !== dateFilter) return false;
+      } else if (cutoff) {
+        if (t.date < cutoff) return false;
+      }
       if (typeFilter === 'needs-review') {
         if (t.type !== 'spend' || t.categorySource === 'user' || t.categoryConfidence >= confidenceThreshold) return false;
       } else if (typeFilter !== 'all' && t.type !== typeFilter) return false;
       if (s && !t.merchantRaw.toLowerCase().includes(s) && !(t.merchantNormalized?.toLowerCase().includes(s)) && !(t.notes?.toLowerCase().includes(s))) return false;
       return true;
     });
-  }, [visibleTxs, typeFilter, dateFilter, search, confidenceThreshold]);
+  }, [visibleTxs, typeFilter, dateFilter, customFrom, customTo, search, confidenceThreshold]);
 
   const spend = useMemo(() => visibleTxs.filter(t => t.type === 'spend').reduce((s, t) => s + t.amount, 0), [visibleTxs]);
   const income = useMemo(() => visibleTxs.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0), [visibleTxs]);
@@ -123,17 +132,24 @@ export function TransactionsPage() {
     await db.transactions.update(tx.id, { notes: note.trim() || undefined });
   }
 
+  async function onMarkReviewed(tx: Transaction) {
+    await db.transactions.update(tx.id, { categorySource: 'user', categoryConfidence: 1 });
+  }
+
   async function confirmOwed() {
     if (!owedTx || !owedName.trim()) return;
+    const name = owedName.trim();
+    const exists = contacts.some(c => c.name.toLowerCase() === name.toLowerCase());
+    if (!exists) await db.contacts.add({ id: nanoid(), name, createdAt: Date.now() });
     await db.outstanding.add({
       id: nanoid(),
       transactionId: owedTx.id,
-      personName: owedName.trim(),
+      personName: name,
       amount: Math.abs(owedTx.amount),
       createdAt: Date.now(),
       status: 'outstanding',
     });
-    setFlash(`${owedName.trim()} owes you ${fmtCAD(Math.abs(owedTx.amount))}.`);
+    setFlash(`${name} owes you ${fmtCAD(Math.abs(owedTx.amount))}.`);
     setTimeout(() => setFlash(null), 4000);
     setOwedTx(null);
     setOwedName('');
@@ -168,10 +184,18 @@ export function TransactionsPage() {
             <option value="last-30">Last 30 days</option>
             <option value="last-3m">Last 3 months</option>
             <option value="ytd">Year to date</option>
+            <option value="custom">Custom range…</option>
             <optgroup label="By month">
               {months.map(m => <option key={m} value={m}>{m}</option>)}
             </optgroup>
           </select>
+          {dateFilter === 'custom' && (
+            <>
+              <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customFrom} onChange={e => setCustomFrom(e.target.value)} title="From date" />
+              <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>→</span>
+              <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customTo} onChange={e => setCustomTo(e.target.value)} title="To date" />
+            </>
+          )}
           <button className="btn btn-primary" onClick={() => setShowAddTx(true)}>
             <Icon name="plus" size={14} />Add transaction
           </button>
@@ -230,11 +254,12 @@ export function TransactionsPage() {
       <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
           <table className="data" style={{ tableLayout: 'fixed' }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: 'oklch(98.5% 0.003 260)', boxShadow: '0 1px 0 var(--line)' }}>
               <tr>
                 <th style={{ width: 80 }}>Date</th>
                 <th style={{ width: 52 }}>Bank</th>
                 <th>Merchant</th>
+                <th style={{ width: 200, textAlign: 'right' }}></th>
                 <th style={{ width: 110 }}>Type</th>
                 <th style={{ width: 170 }}>Category</th>
                 <th style={{ width: 110 }}>Confidence</th>
@@ -244,7 +269,7 @@ export function TransactionsPage() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--ink-mute)', fontSize: 13 }}>No transactions match these filters.</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--ink-mute)', fontSize: 13 }}>No transactions match these filters.</td></tr>
               ) : filtered.map(t => (
                 <TxRow
                   key={t.id}
@@ -260,6 +285,7 @@ export function TransactionsPage() {
                   onDelete={onDelete}
                   onSaveNote={onSaveNote}
                   onMarkOwed={() => { setOwedTx(t); setOwedName(''); }}
+                  onMarkReviewed={onMarkReviewed}
                 />
               ))}
             </tbody>
@@ -306,7 +332,11 @@ export function TransactionsPage() {
               {owedTx.merchantRaw} · <span className="mono">{fmtCAD(Math.abs(owedTx.amount))}</span><br />
               <span style={{ fontSize: 11 }}>You paid the full amount — who owes you?</span>
             </div>
+            <datalist id="owed-contacts">
+              {contacts.map(c => <option key={c.id} value={c.name} />)}
+            </datalist>
             <input
+              list="owed-contacts"
               className="input"
               style={{ width: '100%', marginBottom: 16 }}
               placeholder="Person's name (e.g. Mom)"
@@ -333,7 +363,7 @@ export function TransactionsPage() {
 
 function TxRow({
   tx, category, categories, confidenceThreshold, isOwed,
-  onCategoryChange, onTypeChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed,
+  onCategoryChange, onTypeChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed, onMarkReviewed,
 }: {
   tx: Transaction;
   category: Category | undefined;
@@ -347,6 +377,7 @@ function TxRow({
   onDelete: (tx: Transaction) => void;
   onSaveNote: (tx: Transaction, note: string) => void;
   onMarkOwed: () => void;
+  onMarkReviewed: (tx: Transaction) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ right: number; top: number } | null>(null);
@@ -354,6 +385,7 @@ function TxRow({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [editingNote, setEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState(tx.notes ?? '');
+  const [spreadOpen, setSpreadOpen] = useState(false);
   const isIncome = tx.type === 'income';
   const needsReview = tx.type === 'spend' && tx.categorySource !== 'user' && tx.categoryConfidence < confidenceThreshold;
 
@@ -381,13 +413,18 @@ function TxRow({
     onSaveNote(tx, noteValue);
   }
 
+  // 3-dot menu: only hide and delete
   const menuItems = [
-    { label: tx.notes ? 'Edit note' : 'Add note', action: () => { setEditingNote(true); setMenuOpen(false); } },
-    { label: tx.split ? 'Edit split' : 'Split between people', action: () => { onSplit(); setMenuOpen(false); } },
-    { label: 'Mark as owed (full amount)', action: () => { onMarkOwed(); setMenuOpen(false); } },
     { label: tx.hidden ? 'Unhide' : 'Hide', action: () => { onHide(tx); setMenuOpen(false); } },
     { label: 'Delete', action: () => { onDelete(tx); setMenuOpen(false); }, danger: true },
   ];
+
+  const actionBtn: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 3,
+    fontSize: 10, padding: '2px 7px', borderRadius: 5,
+    border: 'none', background: 'oklch(50% 0.01 260 / 0.07)',
+    color: 'var(--ink-soft)', cursor: 'pointer', fontFamily: 'inherit',
+  };
 
   return (
     <>
@@ -395,16 +432,34 @@ function TxRow({
         <td className="mono" style={{ color: 'var(--ink-mute)', fontSize: 12 }}>{tx.date.slice(5)}</td>
         <td><BankLogo bank={tx.bank} size={20} /></td>
         <td>
+          {/* Merchant name + status chips */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 500 }}>{tx.merchantRaw}</span>
-            {needsReview && <span className="chip chip-warn" style={{ fontSize: 10, padding: '1px 6px' }}>Review</span>}
+            {needsReview && (
+              <button
+                className="chip chip-warn"
+                style={{ fontSize: 10, padding: '1px 6px', cursor: 'pointer' }}
+                onClick={() => onMarkReviewed(tx)}
+                title="Categorization looks correct? Click to mark as reviewed"
+              >
+                Review ✓
+              </button>
+            )}
             {isOwed && <span className="chip chip-accent" style={{ fontSize: 10, padding: '1px 6px' }}>Owed</span>}
           </div>
+          {/* Split info */}
           {tx.split && (
-            <div style={{ fontSize: 11, color: 'oklch(58% 0.1 75)', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ fontSize: 11, color: 'oklch(58% 0.1 75)', marginTop: 3, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Icon name="split" size={10} />Split {tx.split.people} ways · {fmtCAD(tx.split.myShare)} mine
             </div>
           )}
+          {/* Spread info */}
+          {tx.spreadMonths && tx.spreadMonths > 1 && (
+            <div style={{ fontSize: 11, color: 'oklch(55% 0.12 220)', marginTop: 3, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Icon name="calendar" size={10} />Spread {tx.spreadMonths} months · {fmtCAD(Math.abs(tx.amount) / tx.spreadMonths)}/mo
+            </div>
+          )}
+          {/* Note */}
           {editingNote ? (
             <input
               value={noteValue}
@@ -421,6 +476,27 @@ function TxRow({
               "{tx.notes}"
             </div>
           ) : null}
+        </td>
+        {/* Action buttons — between Merchant and Type, right-aligned */}
+        <td style={{ textAlign: 'right' }}>
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+            <button style={actionBtn} onClick={() => setEditingNote(true)}>
+              <Icon name="plus" size={9} />{tx.notes ? 'Edit note' : 'Note'}
+            </button>
+            <button style={actionBtn} onClick={onSplit}>
+              <Icon name="split" size={9} />{tx.split ? 'Edit split' : 'Split'}
+            </button>
+            {tx.type === 'spend' && (
+              <button style={actionBtn} onClick={() => setSpreadOpen(true)}>
+                <Icon name="calendar" size={9} />{tx.spreadMonths && tx.spreadMonths > 1 ? 'Edit spread' : 'Spread'}
+              </button>
+            )}
+            {tx.type === 'spend' && !isOwed && (
+              <button style={actionBtn} onClick={onMarkOwed}>
+                <Icon name="owed" size={9} />Owed
+              </button>
+            )}
+          </div>
         </td>
         <td>
           <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
@@ -464,7 +540,7 @@ function TxRow({
       {menuOpen && menuPos && createPortal(
         <div
           ref={dropdownRef}
-          style={{ position: 'fixed', right: menuPos.right, top: menuPos.top, zIndex: 9999, background: 'color-mix(in oklab, white 85%, transparent)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 200, display: 'flex', flexDirection: 'column', gap: 2 }}
+          style={{ position: 'fixed', right: menuPos.right, top: menuPos.top, zIndex: 9999, background: 'color-mix(in oklab, white 85%, transparent)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 140, display: 'flex', flexDirection: 'column', gap: 2 }}
         >
           {menuItems.map(item => (
             <button key={item.label} onClick={item.action} style={{ textAlign: 'left', padding: '6px 10px', borderRadius: 7, border: 'none', background: 'transparent', fontSize: 12, color: item.danger ? 'var(--danger)' : 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -476,7 +552,64 @@ function TxRow({
         </div>,
         document.body
       )}
+      {spreadOpen && <SpreadMonthsDialog tx={tx} onClose={() => setSpreadOpen(false)} />}
     </>
+  );
+}
+
+function SpreadMonthsDialog({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
+  const [val, setVal] = useState(String(tx.spreadMonths && tx.spreadMonths > 1 ? tx.spreadMonths : 1));
+  const n = parseInt(val);
+  const valid = Number.isFinite(n) && n >= 1;
+
+  async function save() {
+    if (!valid) return;
+    await db.transactions.update(tx.id, { spreadMonths: n > 1 ? n : 1 });
+    onClose();
+  }
+
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(10,12,18,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
+      <div className="glass" style={{ padding: 24, maxWidth: 360, width: '90%' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Spread over months</div>
+        <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginBottom: 18 }}>
+          {tx.merchantRaw} · <span className="mono">{fmtCAD(Math.abs(tx.amount))}</span><br />
+          <span style={{ fontSize: 11 }}>Split this cost across multiple months for budget tracking.</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <input
+            type="number" min="1" max="60" className="input"
+            style={{ width: 80, textAlign: 'center' }}
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onClose(); }}
+            autoFocus
+          />
+          <span style={{ fontSize: 13, color: 'var(--ink-mute)' }}>months</span>
+          {valid && n > 1 && (
+            <span className="mono" style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+              = {fmtCAD(Math.abs(tx.amount) / n)}/mo
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          {tx.spreadMonths && tx.spreadMonths > 1 && (
+            <button
+              className="btn btn-ghost"
+              style={{ color: 'var(--danger)' }}
+              onClick={async () => { await db.transactions.update(tx.id, { spreadMonths: 1 }); onClose(); }}
+            >
+              Remove spread
+            </button>
+          )}
+          <button className="btn btn-primary" disabled={!valid} onClick={save}>
+            <Icon name="check" size={13} />Apply
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

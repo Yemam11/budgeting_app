@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
-import { fmtCAD, categoryTotals, currentMonthKey, txsInMonth } from '../lib/money';
+import { fmtCAD, categoryTotals, currentMonthKey, effectiveTxsInMonth } from '../lib/money';
 import { Icon, CatSwatch, Delta } from '../components/Primitives';
 
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -14,7 +14,7 @@ export function BudgetsPage() {
   const [monthKeyState, setMonthKeyState] = useState(currentMonthKey());
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const monthTxs = useMemo(() => txsInMonth(txs, monthKeyState), [txs, monthKeyState]);
+  const monthTxs = useMemo(() => effectiveTxsInMonth(txs, monthKeyState), [txs, monthKeyState]);
   const totals = useMemo(() => categoryTotals(monthTxs), [monthTxs]);
   const budgetMap = useMemo(() => new Map(budgets.map(b => [b.categoryId, b.monthlyLimit])), [budgets]);
 

@@ -55,6 +55,27 @@ export function txsInMonth(txs: Transaction[], key: string): Transaction[] {
   return txs.filter((t) => monthKey(t.date) === key);
 }
 
+export function effectiveTxsInMonth(txs: Transaction[], key: string): Transaction[] {
+  const result: Transaction[] = [];
+  for (const tx of txs) {
+    const n = tx.spreadMonths && tx.spreadMonths > 1 ? tx.spreadMonths : 1;
+    if (n === 1) {
+      if (monthKey(tx.date) === key) result.push(tx);
+    } else {
+      const [y, m] = tx.date.slice(0, 7).split('-').map(Number);
+      for (let i = 0; i < n; i++) {
+        const d = new Date(Date.UTC(y, m - 1 + i, 1));
+        const mk = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+        if (mk === key) {
+          result.push({ ...tx, amount: tx.amount / n });
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 export function fmtCompact(n: number): string {
   if (n >= 10000) return `$${(n / 1000).toFixed(0)}k`;
   if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`;

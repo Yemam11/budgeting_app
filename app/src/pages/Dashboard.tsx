@@ -3,7 +3,7 @@ import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import {
   fmtCAD, fmtCompact, currentMonthKey, prevMonth, lastNMonths, monthKey,
-  txsInMonth, categoryTotals, totalSpend, totalIncome,
+  txsInMonth, effectiveTxsInMonth, categoryTotals, totalSpend, totalIncome,
 } from '../lib/money';
 import type { Category } from '../types';
 import { Icon, BankLogo, CatSwatch, Delta, ConfBar } from '../components/Primitives';
@@ -39,8 +39,8 @@ export function DashboardPage({ onNavigate }: Props) {
   const thisMonth = selectedMonth;
   const prevMonthKey = prevMonth(thisMonth);
 
-  const monthTxs = useMemo(() => txsInMonth(txs, thisMonth), [txs, thisMonth]);
-  const prevMonthTxs = useMemo(() => txsInMonth(txs, prevMonthKey), [txs, prevMonthKey]);
+  const monthTxs = useMemo(() => effectiveTxsInMonth(txs, thisMonth), [txs, thisMonth]);
+  const prevMonthTxs = useMemo(() => effectiveTxsInMonth(txs, prevMonthKey), [txs, prevMonthKey]);
 
   const totals = useMemo(() => categoryTotals(monthTxs), [monthTxs]);
   const spend = totalSpend(monthTxs);
@@ -113,7 +113,7 @@ export function DashboardPage({ onNavigate }: Props) {
   const topStackCats = useMemo(() => {
     const acc = new Map<string, number>();
     for (const mk of sixMonths) {
-      for (const [id, v] of categoryTotals(txsInMonth(txs, mk)).entries()) {
+      for (const [id, v] of categoryTotals(effectiveTxsInMonth(txs, mk)).entries()) {
         acc.set(id, (acc.get(id) ?? 0) + v);
       }
     }
@@ -125,7 +125,7 @@ export function DashboardPage({ onNavigate }: Props) {
   const stackedMonths = useMemo(() =>
     sixMonths.map(mk => ({
       label: monthAbbr(mk),
-      values: Object.fromEntries(categoryTotals(txsInMonth(txs, mk))),
+      values: Object.fromEntries(categoryTotals(effectiveTxsInMonth(txs, mk))),
     })),
     [txs, sixMonths],
   );
@@ -258,7 +258,7 @@ export function DashboardPage({ onNavigate }: Props) {
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
               <div style={{ position: 'relative', flexShrink: 0 }}>
-                <Donut data={donutData} size={160} thickness={18} />
+                <Donut data={donutData} size={190} thickness={20} />
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 4 }}>Spent</div>
                   <div className="mono" style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em' }}>{fmtCompact(spend)}</div>

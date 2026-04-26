@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { nanoid } from 'nanoid';
+import { useQuery } from '../hooks/useQuery';
+import { db } from '../db';
 import type { Transaction } from '../types';
 import { applyEvenSplit, applyCustomSplit, clearSplit } from '../lib/split';
 import { fmtCAD } from '../lib/money';
@@ -28,6 +31,7 @@ export function SplitDialog({ tx, onClose }: Props) {
       others: existing.length ? existing.map((p) => ({ name: p.name, amount: p.amount })) : [{ name: '', amount: Math.round(original / 2 * 100) / 100 }],
     };
   });
+  const contacts = useQuery(() => db.contacts.toArray(), []) ?? [];
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -49,16 +53,22 @@ export function SplitDialog({ tx, onClose }: Props) {
     setBusy(true);
     setErr(null);
     try {
+      const names = mode === 'even'
+        ? otherNames.slice(0, people - 1)
+        : custom.others.map(p => p.name);
       if (mode === 'even') {
-        await applyEvenSplit(tx.id, {
-          totalPeople: people,
-          otherPeople: otherNames.slice(0, people - 1),
-        });
+        await applyEvenSplit(tx.id, { totalPeople: people, otherPeople: names });
       } else {
-        await applyCustomSplit(tx.id, {
-          myAmount: custom.my,
-          others: custom.others,
-        });
+        await applyCustomSplit(tx.id, { myAmount: custom.my, others: custom.others });
+      }
+      // Auto-create contacts for any new names
+      const existingNames = new Set(contacts.map(c => c.name.toLowerCase()));
+      for (const name of names) {
+        const trimmed = name.trim();
+        if (trimmed && !existingNames.has(trimmed.toLowerCase())) {
+          await db.contacts.add({ id: nanoid(), name: trimmed, createdAt: Date.now() });
+          existingNames.add(trimmed.toLowerCase());
+        }
       }
       onClose();
     } catch (e) {
@@ -115,10 +125,14 @@ export function SplitDialog({ tx, onClose }: Props) {
             </label>
             <div>
               <div className="text-sm text-slate-600 mb-1">Other people (names)</div>
+              <datalist id="split-contacts">
+                {contacts.map(c => <option key={c.id} value={c.name} />)}
+              </datalist>
               <div className="space-y-1">
                 {otherNames.slice(0, people - 1).map((name, i) => (
                   <input
                     key={i}
+                    list="split-contacts"
                     value={name}
                     onChange={(e) => updateOtherName(i, e.target.value)}
                     placeholder={`Person ${i + 1} name`}
@@ -147,6 +161,7 @@ export function SplitDialog({ tx, onClose }: Props) {
             {custom.others.map((p, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
                 <input
+                  list="split-contacts"
                   value={p.name}
                   onChange={(e) => {
                     const others = [...custom.others];

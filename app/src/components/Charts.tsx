@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { FC } from 'react';
 
 const fmtAxis = (v: number) => {
@@ -5,6 +6,19 @@ const fmtAxis = (v: number) => {
   if (v >= 10000) return `$${Math.round(v / 1000)}k`;
   if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
   return `$${Math.round(v)}`;
+};
+
+const fmtTip = (v: number) =>
+  v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(2)}`;
+
+const tipStyle: React.CSSProperties = {
+  position: 'fixed', zIndex: 9999, pointerEvents: 'none',
+  background: 'color-mix(in oklab, white 94%, transparent)',
+  backdropFilter: 'blur(10px)',
+  border: '1px solid oklch(50% 0.01 260 / 0.15)',
+  borderRadius: 10, padding: '10px 14px',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+  fontSize: 12,
 };
 
 type CashflowDatum = { label: string; income: number; spend: number };
@@ -19,7 +33,7 @@ export const CashflowBars: FC<{ data: CashflowDatum[]; height?: number }> = ({ d
   const grid = 'oklch(50% 0.01 260 / 0.1)';
   const lbl = 'var(--ink-mute)';
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
       {[0, 0.5, 1].map(t => {
         const y = pad.t + ih * (1 - t);
         return (
@@ -50,6 +64,7 @@ export const CashflowBars: FC<{ data: CashflowDatum[]; height?: number }> = ({ d
 type DonutDatum = { label: string; value: number; color: string };
 
 export const Donut: FC<{ data: DonutDatum[]; size?: number; thickness?: number }> = ({ data, size = 200, thickness = 24 }) => {
+  const [tip, setTip] = useState<{ x: number; y: number; item: DonutDatum; pct: number } | null>(null);
   const total = data.reduce((s, d) => s + d.value, 0);
   if (total === 0) return <svg width={size} height={size} />;
   const r = size / 2 - thickness / 2 - 2;
@@ -63,15 +78,36 @@ export const Donut: FC<{ data: DonutDatum[]; size?: number; thickness?: number }
     const large = frac > 0.5 ? 1 : 0;
     const x0 = c + r * Math.cos(a0), y0 = c + r * Math.sin(a0);
     const x1 = c + r * Math.cos(a1), y1 = c + r * Math.sin(a1);
-    return { d, path: `M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1}` };
+    return { d, path: `M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1}`, pct: frac };
   });
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
-      <circle cx={c} cy={c} r={r} fill="none" stroke="oklch(50% 0.01 260 / 0.08)" strokeWidth={thickness} />
-      {segs.map((s, i) => (
-        <path key={i} d={s.path} fill="none" stroke={s.d.color} strokeWidth={thickness} strokeLinecap="butt" />
-      ))}
-    </svg>
+    <>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
+        <circle cx={c} cy={c} r={r} fill="none" stroke="oklch(50% 0.01 260 / 0.08)" strokeWidth={thickness} />
+        {segs.map((s, i) => (
+          <path
+            key={i} d={s.path} fill="none" stroke={s.d.color}
+            strokeWidth={tip?.item === s.d ? thickness + 5 : thickness}
+            strokeLinecap="butt"
+            style={{ cursor: 'default', transition: 'stroke-width 0.1s' }}
+            onMouseEnter={e => setTip({ x: e.clientX, y: e.clientY, item: s.d, pct: s.pct })}
+            onMouseMove={e => setTip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
+            onMouseLeave={() => setTip(null)}
+          />
+        ))}
+      </svg>
+      {tip && (
+        <div style={{ ...tipStyle, left: tip.x + 14, top: tip.y - 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: tip.item.color, flexShrink: 0 }} />
+            <span style={{ fontWeight: 600 }}>{tip.item.label}</span>
+          </div>
+          <div style={{ color: 'var(--ink-mute)', fontSize: 11 }}>
+            {fmtTip(tip.item.value)} · {(tip.pct * 100).toFixed(1)}% of spend
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
@@ -79,6 +115,7 @@ type StackedMonth = { label: string; values: Record<string, number> };
 type StackedCat = { id: string; name: string; color: string };
 
 export const StackedBars: FC<{ months: StackedMonth[]; categories: StackedCat[]; height?: number }> = ({ months, categories, height = 200 }) => {
+  const [tip, setTip] = useState<{ x: number; y: number; m: StackedMonth; total: number } | null>(null);
   const totals = months.map(m => Object.values(m.values).reduce((a, b) => a + b, 0));
   const max = Math.max(...totals, 1) * 1.15;
   const W = 600, H = height;
@@ -89,35 +126,60 @@ export const StackedBars: FC<{ months: StackedMonth[]; categories: StackedCat[];
   const grid = 'oklch(50% 0.01 260 / 0.1)';
   const lbl = 'var(--ink-mute)';
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
-      {[0, 0.5, 1].map(t => {
-        const y = pad.t + ih * (1 - t);
-        return (
-          <g key={t}>
-            <line x1={pad.l} x2={W - pad.r} y1={y} y2={y} stroke={grid} strokeDasharray="2 3" />
-            <text x={pad.l - 6} y={y + 3} fontSize="9" fill={lbl} textAnchor="end" fontFamily="var(--mono)">{fmtAxis(max * t)}</text>
-          </g>
-        );
-      })}
-      {months.map((m, i) => {
-        const x = pad.l + i * (bw + gap) + gap / 2;
-        let barY = pad.t + ih;
-        const rects: React.ReactNode[] = [];
-        for (const c of categories) {
-          const v = m.values[c.id] ?? 0;
-          if (v <= 0) continue;
-          const h = (v / max) * ih;
-          rects.push(<rect key={c.id} x={x} y={barY - h} width={bw} height={Math.max(h - 1, 0)} fill={c.color} opacity={0.88} />);
-          barY -= h;
-        }
-        return (
-          <g key={i}>
-            {rects}
-            <text x={x + bw / 2} y={H - 8} fontSize="10" fill={lbl} textAnchor="middle">{m.label}</text>
-          </g>
-        );
-      })}
-    </svg>
+    <>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
+        {[0, 0.5, 1].map(t => {
+          const y = pad.t + ih * (1 - t);
+          return (
+            <g key={t}>
+              <line x1={pad.l} x2={W - pad.r} y1={y} y2={y} stroke={grid} strokeDasharray="2 3" />
+              <text x={pad.l - 6} y={y + 3} fontSize="9" fill={lbl} textAnchor="end" fontFamily="var(--mono)">{fmtAxis(max * t)}</text>
+            </g>
+          );
+        })}
+        {months.map((m, i) => {
+          const x = pad.l + i * (bw + gap) + gap / 2;
+          let barY = pad.t + ih;
+          const rects: JSX.Element[] = [];
+          for (const cat of categories) {
+            const v = m.values[cat.id] ?? 0;
+            if (v <= 0) continue;
+            const h = (v / max) * ih;
+            rects.push(<rect key={cat.id} x={x} y={barY - h} width={bw} height={Math.max(h - 1, 0)} fill={cat.color} opacity={0.88} />);
+            barY -= h;
+          }
+          return (
+            <g key={i} style={{ cursor: 'default' }}
+              onMouseEnter={e => setTip({ x: e.clientX, y: e.clientY, m, total: totals[i] })}
+              onMouseMove={e => setTip(t => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
+              onMouseLeave={() => setTip(null)}
+            >
+              {rects}
+              {/* transparent hit area covers the full column */}
+              <rect x={x} y={pad.t} width={bw} height={ih} fill="transparent" />
+              <text x={x + bw / 2} y={H - 8} fontSize="10" fill={lbl} textAnchor="middle">{m.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+      {tip && (
+        <div style={{ ...tipStyle, left: tip.x + 14, top: tip.y - 12, minWidth: 170 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>
+            {tip.m.label} · {fmtTip(tip.total)}
+          </div>
+          {categories
+            .filter(c => (tip.m.values[c.id] ?? 0) > 0)
+            .sort((a, b) => (tip.m.values[b.id] ?? 0) - (tip.m.values[a.id] ?? 0))
+            .map(c => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: c.color, flexShrink: 0 }} />
+                <span style={{ flex: 1, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                <span style={{ fontFamily: 'var(--mono)', fontWeight: 500, fontSize: 11 }}>{fmtTip(tip.m.values[c.id] ?? 0)}</span>
+              </div>
+            ))}
+        </div>
+      )}
+    </>
   );
 };
 
@@ -137,11 +199,9 @@ export const Sankey: FC<{ income: SankeyInflow[]; outflows: SankeyOutflow[]; hei
 
   const totalIn = income.reduce((s, d) => s + d.value, 0);
   const totalOut = outflows.reduce((s, d) => s + d.value, 0);
-  // Scale by the larger of the two so nodes never exceed usableH
   const scaleBase = Math.max(totalIn, totalOut, 1);
   const scale = usableH / scaleBase;
 
-  // Left nodes — proportional to their actual value
   let lY = startY;
   const lNodes = income.map((d, i) => {
     const h = Math.max(d.value * scale, 4);
@@ -150,11 +210,8 @@ export const Sankey: FC<{ income: SankeyInflow[]; outflows: SankeyOutflow[]; hei
     return n;
   });
 
-  // Hub height = left total (income)
   const hubH = totalIn * scale;
 
-  // Right nodes — normalized so they sum to hubH (proportional allocation of income)
-  // This prevents right side from overflowing when spend >> income
   const rGap = 2;
   const rGapTotal = Math.max(outflows.length - 1, 0) * rGap;
   const rAvail = Math.max(hubH - rGapTotal, 4);
@@ -166,7 +223,6 @@ export const Sankey: FC<{ income: SankeyInflow[]; outflows: SankeyOutflow[]; hei
     return n;
   });
 
-  // Ribbons — left fills hub from top down, right also from hub top down
   let hubAccTop = startY;
   const leftRibbons = lNodes.map(n => {
     const y0 = n.y, y1 = hubAccTop;
@@ -184,13 +240,11 @@ export const Sankey: FC<{ income: SankeyInflow[]; outflows: SankeyOutflow[]; hei
   });
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
       {leftRibbons.map((p, i) => <path key={'l' + i} d={p} fill="var(--accent)" opacity={0.3} />)}
       {rightRibbons.map((r, i) => <path key={'r' + i} d={r.path} fill={r.color} opacity={0.38} />)}
 
-      {/* Left hub rail */}
       <rect x={midX} y={startY} width={nodeW} height={hubH} rx={2} fill="oklch(30% 0.015 260)" />
-      {/* Right hub rail */}
       <rect x={midX2 - nodeW} y={startY} width={nodeW} height={hubH} rx={2} fill="oklch(30% 0.015 260)" />
 
       {lNodes.map((n, i) => {

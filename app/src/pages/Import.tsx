@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { nanoid } from 'nanoid';
 import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import { DropZone } from '../components/DropZone';
@@ -17,10 +18,21 @@ export function ImportPage() {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [committed, setCommitted] = useState<string[]>([]);
+  const [forcedDups, setForcedDups] = useState<Map<number, Set<string>>>(new Map());
 
   const batches = useQuery(
     () => db.importBatches.orderBy('importedAt').reverse().toArray(), []
   ) ?? [];
+
+  function toggleDup(previewIdx: number, txId: string) {
+    setForcedDups(prev => {
+      const next = new Map(prev);
+      const set = new Set(next.get(previewIdx) ?? []);
+      if (set.has(txId)) set.delete(txId); else set.add(txId);
+      next.set(previewIdx, set);
+      return next;
+    });
+  }
 
   async function onFiles(files: File[]) {
     setBusy(true);
@@ -39,9 +51,16 @@ export function ImportPage() {
     setBusy(false);
   }
 
-  async function confirm(p: ImportPreview) {
+  async function confirm(p: ImportPreview, i: number) {
+    const checked = forcedDups.get(i) ?? new Set<string>();
+    const extra = p.duplicateRows
+      .filter(t => checked.has(t.id))
+      .map(t => ({ ...t, id: nanoid(), dedupeKey: `forced-${nanoid()}` }));
+    const preview: ImportPreview = extra.length > 0
+      ? { ...p, candidates: [...p.candidates, ...extra], newCount: p.newCount + extra.length }
+      : p;
     setBusy(true);
-    await commitImport(p);
+    await commitImport(preview);
     setCommitted(prev => [...prev, p.filename]);
     setPreviews(prev => prev.filter(x => x !== p));
     setBusy(false);
@@ -81,86 +100,132 @@ export function ImportPage() {
       )}
 
       {/* Preview cards */}
-      {previews.map((p, i) => (
-        <div key={i} className="glass" style={{ padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontWeight: 500, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icon name="file" size={14} />
-                <span className="mono">{p.filename}</span>
+      {previews.map((p, i) => {
+        const checkedCount = forcedDups.get(i)?.size ?? 0;
+        const totalImport = p.newCount + checkedCount;
+        return (
+          <div key={i} className="glass" style={{ padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontWeight: 500, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="file" size={14} />
+                  <span className="mono">{p.filename}</span>
+                </div>
+                <div className="eyebrow" style={{ marginTop: 4 }}>{p.parseResult.bank}</div>
               </div>
-              <div className="eyebrow" style={{ marginTop: 4 }}>{p.parseResult.bank}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" onClick={() => dismiss(p)}>Dismiss</button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => confirm(p, i)}
+                  disabled={totalImport === 0 || busy}
+                  style={{ opacity: (totalImport === 0 || busy) ? 0.5 : 1 }}
+                >
+                  Import {totalImport}
+                </button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost" onClick={() => dismiss(p)}>Dismiss</button>
-              <button
-                className="btn btn-primary"
-                onClick={() => confirm(p)}
-                disabled={p.newCount === 0 || busy}
-                style={{ opacity: (p.newCount === 0 || busy) ? 0.5 : 1 }}
-              >
-                Import {p.newCount}
-              </button>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+              {[
+                { label: 'New', value: p.newCount },
+                { label: 'Duplicates', value: p.duplicates },
+                { label: 'Warnings', value: p.warnings.length },
+              ].map(s => (
+                <div key={s.label} style={{ padding: '10px 14px', borderRadius: 10, background: 'color-mix(in oklab, white 60%, transparent)', border: '1px solid var(--line)' }}>
+                  <div className="eyebrow" style={{ marginBottom: 4 }}>{s.label}</div>
+                  <div className="mono" style={{ fontSize: 22, fontWeight: 500 }}>{s.value}</div>
+                </div>
+              ))}
             </div>
-          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-            {[
-              { label: 'New', value: p.newCount },
-              { label: 'Duplicates', value: p.duplicates },
-              { label: 'Warnings', value: p.warnings.length },
-            ].map(s => (
-              <div key={s.label} style={{ padding: '10px 14px', borderRadius: 10, background: 'color-mix(in oklab, white 60%, transparent)', border: '1px solid var(--line)' }}>
-                <div className="eyebrow" style={{ marginBottom: 4 }}>{s.label}</div>
-                <div className="mono" style={{ fontSize: 22, fontWeight: 500 }}>{s.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {p.warnings.length > 0 && (
-            <details style={{ marginBottom: 12 }}>
-              <summary style={{ cursor: 'pointer', fontSize: 12, color: 'oklch(55% 0.12 75)', fontWeight: 500 }}>
-                Warnings ({p.warnings.length})
-              </summary>
-              <ul style={{ fontSize: 11, color: 'var(--ink-mute)', paddingLeft: 16, marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {p.warnings.slice(0, 50).map((w, j) => <li key={j}>{w}</li>)}
-              </ul>
-            </details>
-          )}
-
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data" style={{ fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Merchant</th>
-                  <th>Type</th>
-                  <th style={{ textAlign: 'right' }}>Amount</th>
-                  <th>Category</th>
-                  <th style={{ textAlign: 'right' }}>Conf.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {p.candidates.slice(0, 25).map(t => (
-                  <tr key={t.id}>
-                    <td className="mono" style={{ color: 'var(--ink-mute)' }}>{t.date}</td>
-                    <td style={{ fontWeight: 500 }}>{t.merchantRaw}</td>
-                    <td><span className="chip" style={{ fontSize: 10 }}>{t.type}</span></td>
-                    <td className="mono" style={{ textAlign: 'right' }}>{fmtCAD(t.amount)}</td>
-                    <td>{t.categoryId ?? <span style={{ color: 'var(--ink-mute)' }}>—</span>}</td>
-                    <td className="mono" style={{ textAlign: 'right', color: 'var(--ink-mute)' }}>{Math.round(t.categoryConfidence * 100)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {p.candidates.length > 25 && (
-              <div style={{ fontSize: 11, color: 'var(--ink-mute)', padding: '6px 0 0 4px' }}>
-                …and {p.candidates.length - 25} more
-              </div>
+            {/* Duplicates review section */}
+            {p.duplicateRows.length > 0 && (
+              <details style={{ marginBottom: 12 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12, color: 'oklch(55% 0.12 75)', fontWeight: 500 }}>
+                  {p.duplicates} duplicate{p.duplicates !== 1 ? 's' : ''} skipped — click to review
+                  {checkedCount > 0 && <span style={{ marginLeft: 8, color: 'var(--accent-ink)' }}>({checkedCount} selected to force-import)</span>}
+                </summary>
+                <div style={{ marginTop: 8, padding: '10px 12px', background: 'color-mix(in oklab, white 50%, transparent)', borderRadius: 10, border: '1px solid var(--line)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 10 }}>
+                    These transactions match existing entries (same bank, date, amount, and description). Check any you want to import anyway — useful when the same amount appears twice legitimately.
+                  </div>
+                  <table className="data" style={{ fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 36 }}></th>
+                        <th style={{ width: 90 }}>Date</th>
+                        <th>Merchant</th>
+                        <th style={{ textAlign: 'right', width: 100 }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {p.duplicateRows.map(t => (
+                        <tr key={t.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={forcedDups.get(i)?.has(t.id) ?? false}
+                              onChange={() => toggleDup(i, t.id)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
+                          <td className="mono" style={{ color: 'var(--ink-mute)' }}>{t.date}</td>
+                          <td style={{ fontWeight: 500 }}>{t.merchantRaw}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>{fmtCAD(t.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
             )}
+
+            {p.warnings.length > 0 && (
+              <details style={{ marginBottom: 12 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12, color: 'oklch(55% 0.12 75)', fontWeight: 500 }}>
+                  Warnings ({p.warnings.length})
+                </summary>
+                <ul style={{ fontSize: 11, color: 'var(--ink-mute)', paddingLeft: 16, marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {p.warnings.slice(0, 50).map((w, j) => <li key={j}>{w}</li>)}
+                </ul>
+              </details>
+            )}
+
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data" style={{ fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Merchant</th>
+                    <th>Type</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <th>Category</th>
+                    <th style={{ textAlign: 'right' }}>Conf.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.candidates.slice(0, 25).map(t => (
+                    <tr key={t.id}>
+                      <td className="mono" style={{ color: 'var(--ink-mute)' }}>{t.date}</td>
+                      <td style={{ fontWeight: 500 }}>{t.merchantRaw}</td>
+                      <td><span className="chip" style={{ fontSize: 10 }}>{t.type}</span></td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{fmtCAD(t.amount)}</td>
+                      <td>{t.categoryId ?? <span style={{ color: 'var(--ink-mute)' }}>—</span>}</td>
+                      <td className="mono" style={{ textAlign: 'right', color: 'var(--ink-mute)' }}>{Math.round(t.categoryConfidence * 100)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {p.candidates.length > 25 && (
+                <div style={{ fontSize: 11, color: 'var(--ink-mute)', padding: '6px 0 0 4px' }}>
+                  …and {p.candidates.length - 25} more
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Supported banks */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
@@ -188,8 +253,8 @@ export function ImportPage() {
               <th style={{ width: 60 }}>Bank</th>
               <th>File</th>
               <th style={{ width: 80, textAlign: 'right' }}>Rows</th>
+              <th style={{ width: 190 }}>Date range</th>
               <th style={{ width: 170 }}>Imported</th>
-              <th style={{ width: 100 }}>Status</th>
               <th style={{ width: 50 }}></th>
             </tr>
           </thead>
@@ -212,9 +277,13 @@ export function ImportPage() {
                 </td>
                 <td className="mono" style={{ textAlign: 'right' }}>{b.count}</td>
                 <td className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
+                  {b.dateFrom && b.dateTo
+                    ? <>{b.dateFrom} → {b.dateTo}</>
+                    : <span style={{ color: 'var(--ink-mute)', fontStyle: 'italic' }}>—</span>}
+                </td>
+                <td className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
                   {new Date(b.importedAt).toLocaleString()}
                 </td>
-                <td><span className="chip chip-accent"><Icon name="check" size={10} />Imported</span></td>
                 <td>
                   <button
                     className="btn btn-ghost"

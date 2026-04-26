@@ -25,6 +25,7 @@ export interface Transaction {
   categorySource: CategorySource;
   type: TxType;
   split?: SplitInfo;
+  spreadMonths?: number;
   notes?: string;
   hidden?: boolean;
   dedupeKey: string;
@@ -59,6 +60,8 @@ export interface ImportBatch {
   filename: string;
   importedAt: number;
   count: number;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface OutstandingEntry {
@@ -70,6 +73,12 @@ export interface OutstandingEntry {
   status: 'outstanding' | 'proposed-settled' | 'settled';
   settledByTransactionId?: string;
   settledAt?: number;
+}
+
+export interface Contact {
+  id: string;
+  name: string;
+  createdAt: number;
 }
 
 export interface AppSetting {

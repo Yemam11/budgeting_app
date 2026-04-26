@@ -11,6 +11,7 @@ export interface ImportPreview {
   parseResult: ParseResult;
   candidates: Transaction[];
   duplicates: number;
+  duplicateRows: Transaction[];
   newCount: number;
   warnings: string[];
 }
@@ -29,6 +30,7 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
 
   const batchId = nanoid();
   const candidates: Transaction[] = [];
+  const duplicateRows: Transaction[] = [];
   const dupSet = new Set<string>();
   let duplicates = 0;
 
@@ -41,16 +43,9 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
       rawDesc: r.merchantRaw,
     });
 
-    if (existingKeys.has(dedupeKey) || dupSet.has(dedupeKey)) {
-      duplicates++;
-      continue;
-    }
-    dupSet.add(dedupeKey);
-
     const descForCat = r.descriptionForCategorization ?? r.merchantRaw;
     const cat = categorize(merchantNormalized, descForCat, r.type, merchantRules);
-
-    candidates.push({
+    const tx: Transaction = {
       id: nanoid(),
       bank: r.bank,
       importBatchId: batchId,
@@ -65,7 +60,15 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
       type: r.type,
       dedupeKey,
       rawRow: r.rawRow,
-    });
+    };
+
+    if (existingKeys.has(dedupeKey) || dupSet.has(dedupeKey)) {
+      duplicates++;
+      duplicateRows.push(tx);
+      continue;
+    }
+    dupSet.add(dedupeKey);
+    candidates.push(tx);
   }
 
   return {
@@ -73,6 +76,7 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
     parseResult,
     candidates,
     duplicates,
+    duplicateRows,
     newCount: candidates.length,
     warnings: parseResult.warnings,
   };
@@ -81,12 +85,15 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
 export async function commitImport(preview: ImportPreview): Promise<void> {
   if (preview.candidates.length === 0) return;
 
+  const dates = preview.candidates.map(t => t.date).sort();
   const batch: ImportBatch = {
     id: preview.candidates[0].importBatchId,
     bank: preview.parseResult.bank,
     filename: preview.filename,
     importedAt: Date.now(),
     count: preview.candidates.length,
+    dateFrom: dates[0],
+    dateTo: dates[dates.length - 1],
   };
 
   await db.transaction(
