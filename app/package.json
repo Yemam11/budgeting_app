@@ -48,7 +48,7 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "public/WealthWise Icon.ico"
+      "icon": "public/wealthwise-icon.png"
     },
     "nsis": {
       "oneClick": false,
