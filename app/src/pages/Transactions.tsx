@@ -6,7 +6,7 @@ import { db } from '../db';
 import type { Bank, Category, Transaction, TxType } from '../types';
 import { SplitDialog } from '../components/SplitDialog';
 import { ContactPicker } from '../components/ContactPicker';
-import { recategorizeTransaction } from '../lib/recategorize';
+import { recategorizeTransaction, undoRecategorize, type UndoData } from '../lib/recategorize';
 import { fmtCAD, monthKey, currentMonthKey } from '../lib/money';
 import { Icon, BankLogo, CatSwatch, ConfBar } from '../components/Primitives';
 
@@ -51,7 +51,7 @@ export function TransactionsPage() {
   const [customTo, setCustomTo] = useState('');
   const [search, setSearch] = useState('');
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
+  const [flash, setFlash] = useState<{ text: string; undo: UndoData | null } | null>(null);
   const [showAddTx, setShowAddTx] = useState(false);
   const [owedTx, setOwedTx] = useState<Transaction | null>(null);
   const [owedName, setOwedName] = useState('');
@@ -111,10 +111,18 @@ export function TransactionsPage() {
     const { tx, newCatId } = propagateDialog;
     setPropagateDialog(null);
     const res = await recategorizeTransaction(tx.id, newCatId, { propagateToMerchant: propagate });
-    if (propagate && res.propagated > 0) {
-      setFlash(`Updated ${res.propagated} other transaction${res.propagated === 1 ? '' : 's'} from the same merchant.`);
-      setTimeout(() => setFlash(null), 3500);
-    }
+    const text = propagate && res.propagated > 0
+      ? `Updated ${res.propagated + 1} transaction${res.propagated === 0 ? '' : 's'} from the same merchant.`
+      : 'Category updated.';
+    setFlash({ text, undo: res.undo });
+    setTimeout(() => setFlash(null), 5000);
+  }
+
+  async function undoLastChange() {
+    if (!flash?.undo) return;
+    const undo = flash.undo;
+    setFlash(null);
+    await undoRecategorize(undo);
   }
 
   async function onTypeChange(tx: Transaction, newType: TxType) {
@@ -151,7 +159,7 @@ export function TransactionsPage() {
       createdAt: Date.now(),
       status: 'outstanding',
     });
-    setFlash(`${name} owes you ${fmtCAD(Math.abs(owedTx.amount))}.`);
+    setFlash({ text: `${name} owes you ${fmtCAD(Math.abs(owedTx.amount))}.`, undo: null });
     setTimeout(() => setFlash(null), 4000);
     setOwedTx(null);
     setOwedName('');
@@ -216,8 +224,13 @@ export function TransactionsPage() {
       </div>
 
       {flash && (
-        <div style={{ padding: '10px 16px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)', color: 'var(--accent-ink)', fontSize: 13 }}>
-          {flash}
+        <div style={{ padding: '10px 16px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)', color: 'var(--accent-ink)', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span>{flash.text}</span>
+          {flash.undo && (
+            <button className="btn btn-ghost" style={{ fontSize: 11, flexShrink: 0 }} onClick={undoLastChange}>
+              Undo
+            </button>
+          )}
         </div>
       )}
 

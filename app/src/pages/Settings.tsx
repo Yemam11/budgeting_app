@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
-import type { Category } from '../types';
+import type { Category, MerchantRule } from '../types';
 import { bulkRecategorizeByCategory } from '../lib/recategorize';
 import { exportAll, importAll, wipeAll } from '../lib/backup';
 import { Icon, CatSwatch, Toggle } from '../components/Primitives';
@@ -26,16 +26,47 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
 
 export function SettingsPage() {
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
+  const merchantRules = useQuery(() => db.merchantRules.toArray(), []) ?? [];
   const txCount = useQuery(() => db.transactions.count(), []) ?? 0;
 
   const rawThreshold = useQuery(() => db.settings.get('confidenceThreshold'), []);
   const confidenceThreshold = rawThreshold ? Number(rawThreshold.value) : 0.85;
 
+  const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
+
   const [editing, setEditing] = useState<Category | null>(null);
   const [newName, setNewName] = useState('');
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [editingRule, setEditingRule] = useState<{ rule: MerchantRule; newCatId: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  function onEditRule(rule: MerchantRule, newCatId: string) {
+    if (newCatId === rule.categoryId) return;
+    setEditingRule({ rule, newCatId });
+  }
+
+  async function applyRuleEdit(applyToPast: boolean) {
+    if (!editingRule) return;
+    const { rule, newCatId } = editingRule;
+    setEditingRule(null);
+    await db.merchantRules.put({ ...rule, categoryId: newCatId, lastUpdated: Date.now() });
+    if (applyToPast) {
+      const txs = await db.transactions.where('merchantNormalized').equals(rule.merchantNormalized).toArray();
+      for (const tx of txs) {
+        if (tx.categorySource === 'user') continue;
+        await db.transactions.update(tx.id, { categoryId: newCatId, categoryConfidence: 1, categorySource: 'merchant-rule' });
+      }
+      const n = txs.filter(t => t.categorySource !== 'user').length;
+      setStatus(`Updated rule and ${n} past transaction${n === 1 ? '' : 's'}.`);
+      setTimeout(() => setStatus(null), 4000);
+    }
+  }
+
+  async function onDeleteRule(rule: MerchantRule) {
+    if (!window.confirm(`Delete the rule for "${rule.merchantNormalized}"? Future imports won't be auto-categorized — existing transactions are unchanged.`)) return;
+    await db.merchantRules.delete(rule.merchantNormalized);
+  }
 
   async function addCategory() {
     const name = newName.trim();
@@ -283,6 +314,86 @@ export function SettingsPage() {
           </div>
         )}
       </Section>
+
+      {/* Merchant Rules */}
+      <Section title="Merchant rules" desc={`${merchantRules.length} rule${merchantRules.length === 1 ? '' : 's'} · applied automatically on import.`}>
+        {merchantRules.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--ink-mute)' }}>
+            No rules yet. When you categorize a merchant and choose "All transactions from this merchant", a rule is saved here.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {[...merchantRules].sort((a, b) => a.merchantNormalized.localeCompare(b.merchantNormalized)).map((rule, idx) => {
+              const cat = catMap.get(rule.categoryId);
+              return (
+                <div key={rule.merchantNormalized} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: idx < merchantRules.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                  <div style={{ flex: 1, fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rule.merchantNormalized}>
+                    {rule.merchantNormalized}
+                  </div>
+                  {cat && <CatSwatch color={cat.color} size={8} />}
+                  <select
+                    value={rule.categoryId}
+                    onChange={e => onEditRule(rule, e.target.value)}
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, padding: '3px 8px', appearance: 'none', cursor: 'pointer' }}
+                  >
+                    {categories.filter(c => !c.archived).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => onDeleteRule(rule)}
+                    title="Delete rule"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', padding: '2px 4px', flexShrink: 0, display: 'flex', alignItems: 'center' }}
+                  >
+                    <Icon name="trash" size={14} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+
+      {/* Rule edit scope dialog */}
+      {editingRule && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(10,12,18,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setEditingRule(null)}
+        >
+          <div className="glass" style={{ padding: 24, maxWidth: 400, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Update merchant rule</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginBottom: 20 }}>
+              <em>"{editingRule.rule.merchantNormalized}"</em> → <strong style={{ color: 'var(--ink)' }}>{catMap.get(editingRule.newCatId)?.name ?? editingRule.newCatId}</strong>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                className="btn btn-primary"
+                style={{ justifyContent: 'flex-start', padding: '10px 14px' }}
+                autoFocus
+                onClick={() => applyRuleEdit(true)}
+              >
+                <Icon name="check" size={14} />
+                <div style={{ flex: 1, textAlign: 'left' }}>
+                  <div>Apply to all past transactions</div>
+                  <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.75, marginTop: 1 }}>Re-categorizes existing transactions from this merchant</div>
+                </div>
+              </button>
+              <button
+                className="btn btn-ghost"
+                style={{ justifyContent: 'flex-start', padding: '10px 14px' }}
+                onClick={() => applyRuleEdit(false)}
+              >
+                <Icon name="import" size={14} />
+                <div style={{ textAlign: 'left' }}>Just new imports</div>
+              </button>
+              <button className="btn btn-ghost" style={{ marginTop: 4 }} onClick={() => setEditingRule(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

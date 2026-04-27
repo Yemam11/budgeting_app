@@ -1,6 +1,6 @@
 {
-  "name": "budgeting-app",
-  "productName": "Budget",
+  "name": "WealthWise-App",
+  "productName": "WealthWise",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -40,10 +40,12 @@
       "target": [
         { "target": "dmg", "arch": ["x64", "arm64"] }
       ],
-      "category": "public.app-category.finance"
+      "category": "public.app-category.finance",
+      "icon":  "public/wealthwise Icon.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon":  "public/wealthwise Icon.ics"
     },
     "publish": {
       "provider": "github"

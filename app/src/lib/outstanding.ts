@@ -2,7 +2,7 @@ import { db } from '../db';
 import type { OutstandingEntry, Transaction } from '../types';
 
 const MATCH_WINDOW_DAYS = 45;
-const AMOUNT_TOLERANCE = 0.01;
+const AMOUNT_TOLERANCE = 2.00;
 
 export interface MatchProposal {
   entry: OutstandingEntry;
@@ -10,7 +10,7 @@ export interface MatchProposal {
   daysAfter: number;
 }
 
-function daysBetween(aIso: string, bIso: string): number {
+export function daysBetween(aIso: string, bIso: string): number {
   const a = new Date(aIso).getTime();
   const b = new Date(bIso).getTime();
   return Math.round((b - a) / (1000 * 60 * 60 * 24));
@@ -62,6 +62,16 @@ export async function confirmSettlement(entryId: string, transactionId: string):
     settledByTransactionId: transactionId,
     settledAt: Date.now(),
   });
+}
+
+export async function settleMultiple(entryIds: string[], transactionId: string): Promise<void> {
+  await Promise.all(entryIds.map(id =>
+    db.outstanding.update(id, {
+      status: 'settled',
+      settledByTransactionId: transactionId,
+      settledAt: Date.now(),
+    })
+  ));
 }
 
 export async function dismissProposal(entryId: string): Promise<void> {
