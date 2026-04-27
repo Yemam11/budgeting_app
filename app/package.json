@@ -1,13 +1,53 @@
 {
   "name": "budgeting-app",
+  "productName": "Budget",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently -k -n API,UI -c cyan,green \"node server.js\" \"vite\"",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "pack": "npm run build && electron-builder --dir",
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:all": "npm run build && electron-builder --mac --win"
+  },
+  "build": {
+    "appId": "com.youssef.budget",
+    "productName": "Budget",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "server.js",
+      "electron/**",
+      "node_modules/**",
+      "package.json",
+      "!src/**",
+      "!public/**",
+      "!release/**",
+      "!**/*.ts",
+      "!vite.config.*",
+      "!tsconfig.*",
+      "!tailwind.config.*",
+      "!postcss.config.*"
+    ],
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.finance"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "publish": {
+      "provider": "github"
+    }
   },
   "dependencies": {
     "concurrently": "^9.1.0",
@@ -26,6 +66,8 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
+    "electron": "^41.0.0",
+    "electron-builder": "^25.0.0",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.5.3",

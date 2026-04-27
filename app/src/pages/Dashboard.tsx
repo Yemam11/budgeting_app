@@ -3,7 +3,7 @@ import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import {
   fmtCAD, fmtCompact, currentMonthKey, prevMonth, lastNMonths, monthKey,
-  txsInMonth, effectiveTxsInMonth, categoryTotals, totalSpend, totalIncome,
+  effectiveTxsInMonth, categoryTotals, totalSpend, totalIncome,
 } from '../lib/money';
 import type { Category } from '../types';
 import { Icon, BankLogo, CatSwatch, Delta, ConfBar } from '../components/Primitives';

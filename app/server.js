@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '..', 'data');
+const DATA_DIR = process.env.DATA_DIR ?? join(__dirname, '..', 'data');
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
 const sqldb = new DatabaseSync(join(DATA_DIR, 'budget.db'));
@@ -261,6 +261,13 @@ app.delete('/api/all', (_req, res) => {
   sqldb.exec(Object.values(TABLES).map(({ sql }) => `DELETE FROM ${sql};`).join(''));
   res.json({});
 });
+
+// Serve built frontend when running inside Electron
+if (process.versions.electron) {
+  const DIST_DIR = join(__dirname, 'dist');
+  app.use(express.static(DIST_DIR));
+  app.get('*', (_req, res) => res.sendFile(join(DIST_DIR, 'index.html')));
+}
 
 // Global error handler — log to console and echo message to browser
 app.use((err, _req, res, _next) => {

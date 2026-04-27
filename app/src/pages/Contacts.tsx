@@ -4,7 +4,6 @@ import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import { fmtCAD } from '../lib/money';
 import { Icon } from '../components/Primitives';
-import type { OutstandingEntry } from '../types';
 import { manuallySettle } from '../lib/outstanding';
 
 export function ContactsPage() {
