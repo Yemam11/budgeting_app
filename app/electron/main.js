@@ -22,8 +22,8 @@ function createWindow() {
 async function waitForServer(maxTries = 40, delayMs = 250) {
   for (let i = 0; i < maxTries; i++) {
     try {
-      await fetch('http://localhost:3001');
-      return;
+      const res = await fetch('http://localhost:3001/api/health');
+      if (res.ok) return;
     } catch {}
     await new Promise(r => setTimeout(r, delayMs));
   }

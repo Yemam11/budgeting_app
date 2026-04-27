@@ -184,6 +184,8 @@ function bulkInsert(sql, items, orReplace) {
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
 for (const [route, { sql, pk }] of Object.entries(TABLES)) {
   app.get(`/api/${route}`, (_req, res) => {
     res.json(sqldb.prepare(`SELECT * FROM ${sql}`).all().map(r => fromSql(sql, r)));

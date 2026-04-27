@@ -16,9 +16,9 @@ const monthFull = (k: string) => {
   return `${full[parseInt(k.slice(5, 7), 10) - 1]} ${k.slice(0, 4)}`;
 };
 
-interface Props { onNavigate?: (tab: string) => void }
+interface Props { onNavigate?: (tab: string) => void; userName?: string }
 
-export function DashboardPage({ onNavigate }: Props) {
+export function DashboardPage({ onNavigate, userName }: Props) {
   const txs = useQuery(() => db.transactions.toArray(), []) ?? [];
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
   const budgets = useQuery(() => db.budgets.toArray(), []) ?? [];
@@ -168,7 +168,7 @@ export function DashboardPage({ onNavigate }: Props) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Overview · {monthFull(thisMonth)}</div>
-          <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>{greeting}, Youssef</div>
+          <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>{greeting}{userName ? `, ${userName}` : ''}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ position: 'relative' }}>

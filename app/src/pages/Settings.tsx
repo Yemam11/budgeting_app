@@ -24,7 +24,7 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
   );
 }
 
-export function SettingsPage() {
+export function SettingsPage({ userName = '' }: { userName?: string }) {
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
   const merchantRules = useQuery(() => db.merchantRules.toArray(), []) ?? [];
   const txCount = useQuery(() => db.transactions.count(), []) ?? 0;
@@ -40,6 +40,15 @@ export function SettingsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [editingRule, setEditingRule] = useState<{ rule: MerchantRule; newCatId: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+
+  function startEditName() { setNameInput(userName); setEditingName(true); }
+  async function saveName() {
+    await db.settings.put({ key: 'userName', value: nameInput.trim() });
+    setEditingName(false);
+  }
 
   function onEditRule(rule: MerchantRule, newCatId: string) {
     if (newCatId === rule.categoryId) return;
@@ -136,6 +145,34 @@ export function SettingsPage() {
         <div className="eyebrow" style={{ marginBottom: 6 }}>Preferences</div>
         <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>Settings</div>
       </div>
+
+      {/* Profile */}
+      <Section title="Profile" desc="How the app addresses you.">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {editingName ? (
+            <>
+              <input
+                className="input"
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false); }}
+                placeholder="Your name"
+                style={{ flex: 1, fontSize: 13 }}
+                autoFocus
+              />
+              <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveName}>Save</button>
+              <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setEditingName(false)}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{userName || <span style={{ color: 'var(--ink-mute)', fontWeight: 400 }}>Not set</span>}</div>
+              <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={startEditName}>
+                <Icon name="settings" size={12} />{userName ? 'Edit' : 'Set name'}
+              </button>
+            </>
+          )}
+        </div>
+      </Section>
 
       {/* Categorization */}
       <Section title="Categorization" desc="Control how transactions are auto-categorized on import.">
