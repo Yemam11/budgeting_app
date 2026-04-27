@@ -56,14 +56,11 @@ export default function App() {
       }}>
         {/* Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px 18px', borderBottom: '1px solid var(--line)', marginBottom: 10 }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: 9,
-            background: 'linear-gradient(135deg, oklch(22% 0.02 260), oklch(15% 0.02 260))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 2px 6px rgba(0,0,0,0.15)',
-          }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--accent)', transform: 'rotate(45deg)' }} />
-          </div>
+          <img
+            src="/wealthwise-icon.png"
+            alt="WealthWise"
+            style={{ width: 40, height: 40, objectFit: 'contain', flexShrink: 0 }}
+          />
           <div>
             <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.02em' }}>WealthWise</div>
             <div className="eyebrow" style={{ letterSpacing: '0.08em', marginTop: 1 }}>Local · Private</div>

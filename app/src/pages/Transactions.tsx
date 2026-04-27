@@ -5,6 +5,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db';
 import type { Bank, Category, Transaction, TxType } from '../types';
 import { SplitDialog } from '../components/SplitDialog';
+import { ContactPicker } from '../components/ContactPicker';
 import { recategorizeTransaction } from '../lib/recategorize';
 import { fmtCAD, monthKey, currentMonthKey } from '../lib/money';
 import { Icon, BankLogo, CatSwatch, ConfBar } from '../components/Primitives';
@@ -80,7 +81,8 @@ export function TransactionsPage() {
     const cutoff = getDateCutoff(dateFilter);
     const isMonthFilter = /^\d{4}-\d{2}$/.test(dateFilter);
     return visibleTxs.filter(t => {
-      if (dateFilter === 'custom') {
+      const hasCustomDates = customFrom || customTo;
+      if (hasCustomDates) {
         if (customFrom && t.date < customFrom) return false;
         if (customTo && t.date > customTo) return false;
       } else if (isMonthFilter) {
@@ -175,7 +177,7 @@ export function TransactionsPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <select
-            value={dateFilter} onChange={e => setDateFilter(e.target.value)}
+            value={dateFilter} onChange={e => { setDateFilter(e.target.value); setCustomFrom(''); setCustomTo(''); }}
             className="btn btn-ghost"
             style={{ appearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
           >
@@ -184,18 +186,13 @@ export function TransactionsPage() {
             <option value="last-30">Last 30 days</option>
             <option value="last-3m">Last 3 months</option>
             <option value="ytd">Year to date</option>
-            <option value="custom">Custom range…</option>
             <optgroup label="By month">
               {months.map(m => <option key={m} value={m}>{m}</option>)}
             </optgroup>
           </select>
-          {dateFilter === 'custom' && (
-            <>
-              <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customFrom} onChange={e => setCustomFrom(e.target.value)} title="From date" />
-              <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>→</span>
-              <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customTo} onChange={e => setCustomTo(e.target.value)} title="To date" />
-            </>
-          )}
+          <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customFrom} onChange={e => { setCustomFrom(e.target.value); setDateFilter('all'); }} title="From date" />
+          <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>→</span>
+          <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customTo} onChange={e => { setCustomTo(e.target.value); setDateFilter('all'); }} title="To date" />
           <button className="btn btn-primary" onClick={() => setShowAddTx(true)}>
             <Icon name="plus" size={14} />Add transaction
           </button>
@@ -332,19 +329,16 @@ export function TransactionsPage() {
               {owedTx.merchantRaw} · <span className="mono">{fmtCAD(Math.abs(owedTx.amount))}</span><br />
               <span style={{ fontSize: 11 }}>You paid the full amount — who owes you?</span>
             </div>
-            <datalist id="owed-contacts">
-              {contacts.map(c => <option key={c.id} value={c.name} />)}
-            </datalist>
-            <input
-              list="owed-contacts"
-              className="input"
-              style={{ width: '100%', marginBottom: 16 }}
-              placeholder="Person's name (e.g. Mom)"
-              value={owedName}
-              onChange={e => setOwedName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') confirmOwed(); if (e.key === 'Escape') setOwedTx(null); }}
-              autoFocus
-            />
+            <div style={{ marginBottom: 16 }}>
+              <ContactPicker
+                value={owedName}
+                onChange={setOwedName}
+                contacts={contacts}
+                placeholder="Person's name (e.g. Mom)"
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') confirmOwed(); if (e.key === 'Escape') setOwedTx(null); }}
+              />
+            </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-ghost" onClick={() => setOwedTx(null)}>Cancel</button>
               <button className="btn btn-primary" disabled={!owedName.trim()} onClick={confirmOwed}>
@@ -383,6 +377,10 @@ function TxRow({
   const [menuPos, setMenuPos] = useState<{ right: number; top: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [modifyOpen, setModifyOpen] = useState(false);
+  const [modifyPos, setModifyPos] = useState<{ right: number; top: number } | null>(null);
+  const modifyBtnRef = useRef<HTMLButtonElement>(null);
+  const modifyDropdownRef = useRef<HTMLDivElement>(null);
   const [editingNote, setEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState(tx.notes ?? '');
   const [spreadOpen, setSpreadOpen] = useState(false);
@@ -400,12 +398,29 @@ function TxRow({
     return () => document.removeEventListener('mousedown', close);
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (!modifyOpen) return;
+    function close(e: MouseEvent) {
+      if (!modifyBtnRef.current?.contains(e.target as Node) && !modifyDropdownRef.current?.contains(e.target as Node)) {
+        setModifyOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [modifyOpen]);
+
   useEffect(() => { setNoteValue(tx.notes ?? ''); }, [tx.notes]);
 
   function openMenu() {
     const rect = btnRef.current?.getBoundingClientRect();
     if (rect) setMenuPos({ right: window.innerWidth - rect.right, top: rect.bottom + 4 });
     setMenuOpen(true);
+  }
+
+  function openModify() {
+    const rect = modifyBtnRef.current?.getBoundingClientRect();
+    if (rect) setModifyPos({ right: window.innerWidth - rect.right, top: rect.bottom + 4 });
+    setModifyOpen(true);
   }
 
   function saveNote() {
@@ -483,19 +498,9 @@ function TxRow({
             <button style={actionBtn} onClick={() => setEditingNote(true)}>
               <Icon name="plus" size={9} />{tx.notes ? 'Edit note' : 'Note'}
             </button>
-            <button style={actionBtn} onClick={onSplit}>
-              <Icon name="split" size={9} />{tx.split ? 'Edit split' : 'Split'}
+            <button ref={modifyBtnRef} style={actionBtn} onClick={openModify}>
+              Modify <Icon name="chevron_right" size={9} />
             </button>
-            {tx.type === 'spend' && (
-              <button style={actionBtn} onClick={() => setSpreadOpen(true)}>
-                <Icon name="calendar" size={9} />{tx.spreadMonths && tx.spreadMonths > 1 ? 'Edit spread' : 'Spread'}
-              </button>
-            )}
-            {tx.type === 'spend' && !isOwed && (
-              <button style={actionBtn} onClick={onMarkOwed}>
-                <Icon name="owed" size={9} />Owed
-              </button>
-            )}
           </div>
         </td>
         <td>
@@ -546,6 +551,26 @@ function TxRow({
             <button key={item.label} onClick={item.action} style={{ textAlign: 'left', padding: '6px 10px', borderRadius: 7, border: 'none', background: 'transparent', fontSize: 12, color: item.danger ? 'var(--danger)' : 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }}
               onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in oklab, white 60%, transparent)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              {item.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+      {modifyOpen && modifyPos && createPortal(
+        <div
+          ref={modifyDropdownRef}
+          style={{ position: 'fixed', right: modifyPos.right, top: modifyPos.top, zIndex: 9999, background: 'color-mix(in oklab, white 85%, transparent)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 150, display: 'flex', flexDirection: 'column', gap: 2 }}
+        >
+          {[
+            { label: tx.split ? 'Edit split' : 'Split', icon: 'split', action: () => { onSplit(); setModifyOpen(false); } },
+            ...(tx.type === 'spend' ? [{ label: tx.spreadMonths && tx.spreadMonths > 1 ? 'Edit spread' : 'Spread over months', icon: 'calendar', action: () => { setSpreadOpen(true); setModifyOpen(false); } }] : []),
+            ...(tx.type === 'spend' && !isOwed ? [{ label: 'Mark as owed', icon: 'owed', action: () => { onMarkOwed(); setModifyOpen(false); } }] : []),
+          ].map(item => (
+            <button key={item.label} onClick={item.action} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', padding: '6px 10px', borderRadius: 7, border: 'none', background: 'transparent', fontSize: 12, color: 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in oklab, white 60%, transparent)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              <Icon name={item.icon} size={13} />
               {item.label}
             </button>
           ))}

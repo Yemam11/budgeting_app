@@ -5,6 +5,7 @@ import { db } from '../db';
 import type { Transaction } from '../types';
 import { applyEvenSplit, applyCustomSplit, clearSplit } from '../lib/split';
 import { fmtCAD } from '../lib/money';
+import { ContactPicker } from './ContactPicker';
 
 interface Props {
   tx: Transaction;
@@ -125,18 +126,15 @@ export function SplitDialog({ tx, onClose }: Props) {
             </label>
             <div>
               <div className="text-sm text-slate-600 mb-1">Other people (names)</div>
-              <datalist id="split-contacts">
-                {contacts.map(c => <option key={c.id} value={c.name} />)}
-              </datalist>
               <div className="space-y-1">
                 {otherNames.slice(0, people - 1).map((name, i) => (
-                  <input
+                  <ContactPicker
                     key={i}
-                    list="split-contacts"
                     value={name}
-                    onChange={(e) => updateOtherName(i, e.target.value)}
+                    onChange={v => updateOtherName(i, v)}
+                    contacts={contacts}
                     placeholder={`Person ${i + 1} name`}
-                    className="block w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                    style={{ marginBottom: 4 }}
                   />
                 ))}
               </div>
@@ -160,17 +158,18 @@ export function SplitDialog({ tx, onClose }: Props) {
             </div>
             {custom.others.map((p, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
-                <input
-                  list="split-contacts"
-                  value={p.name}
-                  onChange={(e) => {
-                    const others = [...custom.others];
-                    others[i] = { ...others[i], name: e.target.value };
-                    setCustom({ ...custom, others });
-                  }}
-                  placeholder={`Person ${i + 1}`}
-                  className="w-28 rounded border border-slate-300 px-2 py-1"
-                />
+                <div style={{ width: 112 }}>
+                  <ContactPicker
+                    value={p.name}
+                    onChange={v => {
+                      const others = [...custom.others];
+                      others[i] = { ...others[i], name: v };
+                      setCustom({ ...custom, others });
+                    }}
+                    contacts={contacts}
+                    placeholder={`Person ${i + 1}`}
+                  />
+                </div>
                 <input
                   type="number"
                   step="0.01"

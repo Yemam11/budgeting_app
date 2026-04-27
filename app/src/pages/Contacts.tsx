@@ -15,6 +15,8 @@ export function ContactsPage() {
   const [newContactOpen, setNewContactOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newBusy, setNewBusy] = useState(false);
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
 
   const txMap = useMemo(() => new Map(txs.map(t => [t.id, t])), [txs]);
 
@@ -56,6 +58,22 @@ export function ContactsPage() {
     if (contact) await db.contacts.delete(contact.id);
   }
 
+  function startEdit(name: string) {
+    setEditingName(name);
+    setEditDraft(name);
+  }
+
+  async function saveEdit(oldName: string) {
+    const newName = editDraft.trim();
+    setEditingName(null);
+    if (!newName || newName === oldName) return;
+    const contact = contacts.find(c => c.name === oldName);
+    if (contact) await db.contacts.update(contact.id, { name: newName } as Partial<typeof contact>);
+    for (const e of entries.filter(e => e.personName === oldName)) {
+      await db.outstanding.update(e.id, { personName: newName } as Partial<typeof e>);
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Header */}
@@ -95,7 +113,22 @@ export function ContactsPage() {
               {name[0].toUpperCase()}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 15 }}>{name}</div>
+              {editingName === name ? (
+                <input
+                  className="input"
+                  style={{ fontSize: 15, fontWeight: 600, padding: '3px 8px', marginBottom: 2 }}
+                  value={editDraft}
+                  onChange={e => setEditDraft(e.target.value)}
+                  onBlur={() => saveEdit(name)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') saveEdit(name);
+                    if (e.key === 'Escape') setEditingName(null);
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{name}</div>
+              )}
               <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>
                 {outstanding.length + settled.length} {outstanding.length + settled.length === 1 ? 'entry' : 'entries'}
                 {settled.length > 0 && ` · ${settled.length} settled`}
@@ -116,15 +149,26 @@ export function ContactsPage() {
                   </div>
                 )}
               </div>
-              <button
-                onClick={() => deleteContact(name)}
-                title="Remove contact"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', padding: 4, borderRadius: 6, flexShrink: 0 }}
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--ink-mute)')}
-              >
-                <Icon name="more" size={14} />
-              </button>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={() => startEdit(name)}
+                  title="Rename contact"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', padding: 4, borderRadius: 6, flexShrink: 0 }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--ink-mute)')}
+                >
+                  <Icon name="edit" size={14} />
+                </button>
+                <button
+                  onClick={() => deleteContact(name)}
+                  title="Remove contact"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', padding: 4, borderRadius: 6, flexShrink: 0 }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--ink-mute)')}
+                >
+                  <Icon name="trash" size={14} />
+                </button>
+              </div>
             </div>
           </div>
 
