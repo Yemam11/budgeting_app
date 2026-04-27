@@ -21,8 +21,9 @@ app/release/
 .env.local
 .env.*.local
 
-# Claude Code local settings and memory
+# Claude Code local settings, memory, and handover file
 .claude/
+forclaude.md
 
 # OS
 .DS_Store

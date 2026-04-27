@@ -16,8 +16,8 @@
     "build:all": "npm run build && electron-builder --mac --win"
   },
   "build": {
-    "appId": "com.youssef.budget",
-    "productName": "Budget",
+    "appId": "com.youssef.wealthwise",
+    "productName": "WealthWise",
     "directories": {
       "output": "release"
     },
@@ -41,11 +41,17 @@
         { "target": "dmg", "arch": ["x64", "arm64"] }
       ],
       "category": "public.app-category.finance",
-      "icon":  "public/wealthwise Icon.icns"
+      "icon": "public/WealthWise Icon.icns"
     },
     "win": {
       "target": "nsis",
-      "icon":  "public/wealthwise Icon.ics"
+      "icon": "public/WealthWise Icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "publish": {
       "provider": "github"
