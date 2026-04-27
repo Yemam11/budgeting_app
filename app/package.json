@@ -1,6 +1,9 @@
 {
   "name": "WealthWise-App",
   "productName": "WealthWise",
+  "description": "Personal finance tracker",
+  "author": "Youssef",
+  "repository": "https://github.com/Yemam11/budgeting_app",
   "private": true,
   "version": "1.0.0",
   "type": "module",
