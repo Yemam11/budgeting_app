@@ -396,6 +396,7 @@ function TxRow({
   const modifyDropdownRef = useRef<HTMLDivElement>(null);
   const [editingNote, setEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState(tx.notes ?? '');
+  const deletingNoteRef = useRef(false);
   const [spreadOpen, setSpreadOpen] = useState(false);
   const isIncome = tx.type === 'income';
   const needsReview = tx.type === 'spend' && tx.categorySource !== 'user' && tx.categoryConfidence < confidenceThreshold;
@@ -437,6 +438,7 @@ function TxRow({
   }
 
   function saveNote() {
+    if (deletingNoteRef.current) { deletingNoteRef.current = false; return; }
     setEditingNote(false);
     onSaveNote(tx, noteValue);
   }
@@ -489,19 +491,40 @@ function TxRow({
           )}
           {/* Note */}
           {editingNote ? (
-            <input
-              value={noteValue}
-              onChange={e => setNoteValue(e.target.value)}
-              onBlur={saveNote}
-              onKeyDown={e => { if (e.key === 'Enter') saveNote(); if (e.key === 'Escape') { setEditingNote(false); setNoteValue(tx.notes ?? ''); } }}
-              placeholder="Add a note…"
-              autoFocus
-              className="input"
-              style={{ marginTop: 4, fontSize: 11, padding: '3px 8px', width: '100%', maxWidth: 280 }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+              <input
+                value={noteValue}
+                onChange={e => setNoteValue(e.target.value)}
+                onBlur={saveNote}
+                onKeyDown={e => { if (e.key === 'Enter') saveNote(); if (e.key === 'Escape') { setEditingNote(false); setNoteValue(tx.notes ?? ''); } }}
+                placeholder="Add a note…"
+                autoFocus
+                className="input"
+                style={{ fontSize: 11, padding: '3px 8px', flex: 1, maxWidth: 240 }}
+              />
+              {tx.notes && (
+                <button
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, padding: '2px 7px', borderRadius: 5, border: 'none', background: 'oklch(50% 0.01 260 / 0.07)', color: 'var(--danger)', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+                  title="Delete note"
+                  onMouseDown={() => { deletingNoteRef.current = true; }}
+                  onClick={() => { setEditingNote(false); setNoteValue(''); onSaveNote(tx, ''); }}
+                >
+                  <Icon name="x" size={9} />Delete
+                </button>
+              )}
+            </div>
           ) : tx.notes ? (
-            <div style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic', marginTop: 2, cursor: 'pointer' }} onClick={() => setEditingNote(true)} title="Click to edit note">
-              "{tx.notes}"
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic', cursor: 'pointer' }} onClick={() => setEditingNote(true)} title="Click to edit note">
+                "{tx.notes}"
+              </div>
+              <button
+                style={{ display: 'inline-flex', alignItems: 'center', fontSize: 10, padding: '1px 4px', borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', opacity: 0.6 }}
+                title="Delete note"
+                onClick={() => onSaveNote(tx, '')}
+              >
+                <Icon name="x" size={9} />
+              </button>
             </div>
           ) : null}
         </td>

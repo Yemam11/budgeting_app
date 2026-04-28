@@ -33,7 +33,7 @@ async function _patch<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(body, (_k, v) => v === undefined ? null : v),
   });
   if (!r.ok) throw new Error(`API ${r.status}: PATCH ${path}`);
   return r.json();

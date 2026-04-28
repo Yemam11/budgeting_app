@@ -6,6 +6,7 @@ import { Icon } from '../components/Primitives';
 import {
   confirmSettlement, manuallySettle, settleMultiple, daysBetween,
 } from '../lib/outstanding';
+import { clearSplit } from '../lib/split';
 import type { OutstandingEntry, Transaction } from '../types';
 
 const MATCH_TOLERANCE = 2.00;
@@ -219,6 +220,10 @@ export function OutstandingPage() {
                             evt.stopPropagation();
                             if (window.confirm(`Remove the owed entry for ${e.personName} (${fmtCAD(e.amount)})?`)) {
                               await db.outstanding.delete(e.id);
+                              const remaining = await db.outstanding.where('transactionId').equals(e.transactionId).toArray();
+                              if (!remaining.some(r => r.status !== 'settled')) {
+                                await clearSplit(e.transactionId);
+                              }
                             }
                           }}
                         >

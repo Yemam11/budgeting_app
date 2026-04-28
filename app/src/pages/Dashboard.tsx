@@ -26,6 +26,9 @@ export function DashboardPage({ onNavigate, userName }: Props) {
   const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const hasCustomRange = !!(customFrom || customTo);
 
   const availableMonths = useMemo(() => {
     const set = new Set(txs.map(t => monthKey(t.date)));
@@ -39,7 +42,15 @@ export function DashboardPage({ onNavigate, userName }: Props) {
   const thisMonth = selectedMonth;
   const prevMonthKey = prevMonth(thisMonth);
 
-  const monthTxs = useMemo(() => effectiveTxsInMonth(txs, thisMonth), [txs, thisMonth]);
+  const monthTxs = useMemo(() => {
+    if (hasCustomRange) {
+      return txs.filter(t =>
+        (!customFrom || t.date >= customFrom) &&
+        (!customTo || t.date <= customTo)
+      );
+    }
+    return effectiveTxsInMonth(txs, thisMonth);
+  }, [txs, hasCustomRange, customFrom, customTo, thisMonth]);
   const prevMonthTxs = useMemo(() => effectiveTxsInMonth(txs, prevMonthKey), [txs, prevMonthKey]);
 
   const totals = useMemo(() => categoryTotals(monthTxs), [monthTxs]);
@@ -154,7 +165,7 @@ export function DashboardPage({ onNavigate, userName }: Props) {
   // Recent activity — scoped to selected month
   const recentTxs = useMemo(() =>
     monthTxs.filter(t => !t.hidden).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6),
-    [txs],
+    [monthTxs],
   );
 
   const needsReviewCount = useMemo(() =>
@@ -167,16 +178,16 @@ export function DashboardPage({ onNavigate, userName }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div className="eyebrow" style={{ marginBottom: 6 }}>Overview · {monthFull(thisMonth)}</div>
+          <div className="eyebrow" style={{ marginBottom: 6 }}>Overview · {hasCustomRange ? `${customFrom || '…'} → ${customTo || '…'}` : monthFull(thisMonth)}</div>
           <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>{greeting}{userName ? `, ${userName}` : ''}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative' }}>
             <select
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
+              value={hasCustomRange ? '' : selectedMonth}
+              onChange={e => { setSelectedMonth(e.target.value); setCustomFrom(''); setCustomTo(''); }}
               className="btn btn-ghost"
-              style={{ appearance: 'none', paddingLeft: 32, paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}
+              style={{ appearance: 'none', paddingLeft: 32, paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', opacity: hasCustomRange ? 0.45 : 1 }}
             >
               {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
@@ -184,6 +195,27 @@ export function DashboardPage({ onNavigate, userName }: Props) {
               <Icon name="calendar" size={14} />
             </div>
           </div>
+          <span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>or</span>
+          <input
+            type="date" className="btn btn-ghost"
+            style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
+            value={customFrom}
+            onChange={e => setCustomFrom(e.target.value)}
+            title="Custom from date"
+          />
+          <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>→</span>
+          <input
+            type="date" className="btn btn-ghost"
+            style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
+            value={customTo}
+            onChange={e => setCustomTo(e.target.value)}
+            title="Custom to date"
+          />
+          {hasCustomRange && (
+            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setCustomFrom(''); setCustomTo(''); }}>
+              Clear
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => onNavigate?.('import')}><Icon name="upload" size={14} />Import statement</button>
         </div>
       </div>
@@ -200,23 +232,25 @@ export function DashboardPage({ onNavigate, userName }: Props) {
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 32 }}>
           <div style={{ display: 'flex', gap: 48, alignItems: 'flex-end' }}>
             <div>
-              <div style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'oklch(70% 0.03 260)', marginBottom: 8, fontWeight: 500 }}>Net this month</div>
+              <div style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'oklch(70% 0.03 260)', marginBottom: 8, fontWeight: 500 }}>{hasCustomRange ? 'Net this period' : 'Net this month'}</div>
               <div className="mono" style={{ fontSize: 44, fontWeight: 500, letterSpacing: '-0.03em', lineHeight: 1 }}>{fmtCAD(net)}</div>
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Delta value={netDelta} />
-                <span style={{ fontSize: 12, color: 'oklch(65% 0.02 260)' }}>vs. {monthAbbr(prevMonthKey)} · {fmtCAD(prevNet)}</span>
-              </div>
+              {!hasCustomRange && (
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Delta value={netDelta} />
+                  <span style={{ fontSize: 12, color: 'oklch(65% 0.02 260)' }}>vs. {monthAbbr(prevMonthKey)} · {fmtCAD(prevNet)}</span>
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 28, paddingBottom: 4 }}>
               <div>
                 <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'oklch(70% 0.03 260)', marginBottom: 4 }}>Money in</div>
                 <div className="mono" style={{ fontSize: 18, fontWeight: 500, color: 'var(--accent)' }}>+{fmtCAD(income)}</div>
-                <Delta value={incomeDelta} />
+                {!hasCustomRange && <Delta value={incomeDelta} />}
               </div>
               <div>
                 <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'oklch(70% 0.03 260)', marginBottom: 4 }}>Money out</div>
                 <div className="mono" style={{ fontSize: 18, fontWeight: 500, color: 'oklch(95% 0.01 260)' }}>−{fmtCAD(spend)}</div>
-                <Delta value={spendDelta} />
+                {!hasCustomRange && <Delta value={spendDelta} />}
               </div>
             </div>
           </div>
@@ -286,7 +320,7 @@ export function DashboardPage({ onNavigate, userName }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <div>
             <div style={{ fontWeight: 500, fontSize: 14 }}>Money flow</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>How {monthAbbr(thisMonth)}'s income was allocated</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>How {hasCustomRange ? 'your' : `${monthAbbr(thisMonth)}'s`} income was allocated</div>
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 80px', alignItems: 'center', gap: 8, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-mute)', fontWeight: 600, marginBottom: 4 }}>
@@ -360,7 +394,7 @@ export function DashboardPage({ onNavigate, userName }: Props) {
           <div>
             <div style={{ fontWeight: 500, fontSize: 14 }}>Recent activity</div>
             <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>
-              Newest first{needsReviewCount > 0 && ` · ${needsReviewCount} needing review`}{selectedMonth !== currentMonthKey() && ` · ${monthFull(selectedMonth)}`}
+              Newest first{needsReviewCount > 0 && ` · ${needsReviewCount} needing review`}{hasCustomRange ? ` · custom range` : selectedMonth !== currentMonthKey() && ` · ${monthFull(selectedMonth)}`}
             </div>
           </div>
           <button className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => onNavigate?.('transactions')}>View all</button>
