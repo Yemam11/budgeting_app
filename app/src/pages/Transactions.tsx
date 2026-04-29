@@ -730,6 +730,7 @@ function AddTxModal({ categories, onClose }: { categories: Category[]; onClose: 
               <option value="amex">American Express</option>
               <option value="bmo">BMO</option>
               <option value="scotia">Scotiabank</option>
+              <option value="simplii">Simplii Financial</option>
             </select>
           </div>
           <div style={{ ...F, gridColumn: '1 / -1' }}>

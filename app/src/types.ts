@@ -1,4 +1,4 @@
-export type Bank = 'amex' | 'bmo' | 'scotia';
+export type Bank = 'amex' | 'bmo' | 'scotia' | 'simplii';
 
 export type TxType = 'spend' | 'income' | 'transfer' | 'cc-payment';
 
