@@ -12,6 +12,7 @@ const BANKS = [
   { bank: 'bmo', name: 'BMO', hint: 'Transactions → Download .csv' },
   { bank: 'scotia', name: 'Scotiabank', hint: 'Statements → Export .csv' },
   { bank: 'simplii', name: 'Simplii Financial', hint: 'Credit card → Download → .csv' },
+  { bank: 'cibc', name: 'CIBC', hint: 'Credit card → Download transactions → .csv' },
 ] as const;
 
 export function ImportPage() {

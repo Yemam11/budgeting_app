@@ -2,6 +2,7 @@ import { parseAmex } from './amex';
 import { parseBmo } from './bmo';
 import { parseScotia } from './scotia';
 import { parseSimlii } from './simplii';
+import { parseCibc } from './cibc';
 import type { ParseResult } from './types';
 
 export async function parseFile(file: File): Promise<ParseResult> {
@@ -28,6 +29,11 @@ export async function parseFile(file: File): Promise<ParseResult> {
     return parseSimlii(text);
   }
 
+  // CIBC: headerless CSV, rows start directly with YYYY-MM-DD dates
+  if (/^\d{4}-\d{2}-\d{2},/.test(text.trimStart())) {
+    return parseCibc(text);
+  }
+
   if (firstLines.includes('date') && firstLines.includes('description') && firstLines.includes('amount')) {
     throw new Error(
       `Could not confidently detect bank format for "${file.name}". Expected BMO (Item #,Transaction Date...) or Scotia (Filter,Date,Description,Sub-description...) CSV, or Amex .xls.`,
@@ -37,5 +43,5 @@ export async function parseFile(file: File): Promise<ParseResult> {
   throw new Error(`Unknown file format: ${file.name}`);
 }
 
-export { parseAmex, parseBmo, parseScotia, parseSimlii };
+export { parseAmex, parseBmo, parseScotia, parseSimlii, parseCibc };
 export type { ParseResult, ParsedRow } from './types';

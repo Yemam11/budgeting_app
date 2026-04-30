@@ -53,6 +53,7 @@ export const BankLogo: FC<{ bank: string; size?: number }> = ({ bank, size = 22 
     bmo: { bg: 'oklch(52% 0.18 25)', label: 'BM' },
     scotia: { bg: 'oklch(55% 0.17 15)', label: 'SC' },
     simplii: { bg: 'oklch(50% 0.18 145)', label: 'SI' },
+    cibc: { bg: 'oklch(48% 0.16 310)', label: 'CB' },
   } as Record<string, { bg: string; label: string }>)[bank] ?? { bg: 'oklch(60% 0.02 260)', label: '??' };
   return (
     <div style={{

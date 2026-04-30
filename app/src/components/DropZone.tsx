@@ -42,7 +42,7 @@ export function DropZone({ onFiles, accept = '.csv,.xls,.xlsx', busy = false }: 
         {busy ? 'Parsing…' : 'Drop CSV files anywhere'}
       </div>
       <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginBottom: 16 }}>
-        Supports Amex, BMO, Scotiabank, and Simplii exports · up to 20 files
+        Supports Amex, BMO, Scotiabank, Simplii, and CIBC exports · up to 20 files
       </div>
       {!busy && (
         <button
