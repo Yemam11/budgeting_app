@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, shell } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { autoUpdater } from 'electron-updater';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let mainWindow = null;
@@ -30,15 +31,59 @@ async function waitForServer(maxTries = 40, delayMs = 250) {
   throw new Error('Budget server failed to start — check that port 3001 is free');
 }
 
+function setupAutoUpdater() {
+  if (!app.isPackaged) return;
+
+  // macOS: can't auto-install without code signing — prompt to download manually instead
+  const isMac = process.platform === 'darwin';
+  autoUpdater.autoDownload = !isMac;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('error', () => {});
+
+  if (isMac) {
+    autoUpdater.on('update-available', (info) => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Available',
+        message: `WealthWise ${info.version} is available.`,
+        detail: 'Would you like to download the latest version?',
+        buttons: ['Download', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0) {
+          shell.openExternal('https://github.com/Yemam11/budgeting_app/releases/latest');
+        }
+      });
+    });
+  } else {
+    autoUpdater.on('update-downloaded', () => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Ready',
+        message: 'WealthWise has been updated.',
+        detail: 'Restart now to apply the update, or it will be applied automatically next time you launch the app.',
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall();
+      });
+    });
+  }
+
+  autoUpdater.checkForUpdates();
+}
+
 app.whenReady().then(async () => {
-  // Each user's database lives in their OS app-data folder — never ships with the app
   process.env.DATA_DIR = app.getPath('userData');
 
-  // Start Express server inside the main process
   await import(new URL('../server.js', import.meta.url).href);
 
   await waitForServer();
   createWindow();
+  setupAutoUpdater();
 });
 
 app.on('window-all-closed', () => {
