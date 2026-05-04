@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '../hooks/useQuery';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import type { Bank, Category, Transaction, TxType } from '../types';
+import type { Bank, Category, Person, Transaction, TxType } from '../types';
 import { SplitDialog } from '../components/SplitDialog';
 import { ContactPicker } from '../components/ContactPicker';
 import { recategorizeTransaction, undoRecategorize, type UndoData } from '../lib/recategorize';
@@ -21,6 +21,14 @@ const TYPE_LABEL: Record<string, string> = {
 const TYPE_LABEL_FULL: Record<string, string> = {
   ...TYPE_LABEL,
   'cc-payment': 'Credit Card Payment',
+};
+
+const BANK_NAMES: Record<string, string> = {
+  amex: 'American Express',
+  bmo: 'BMO',
+  scotia: 'Scotiabank',
+  simplii: 'Simplii',
+  cibc: 'CIBC',
 };
 
 type TypeFilter = 'all' | TxType | 'needs-review';
@@ -42,6 +50,7 @@ export function TransactionsPage() {
   const outstandingEntries = useQuery(() => db.outstanding.where('status').notEqual('settled').toArray(), []) ?? [];
   const thresholdSetting = useQuery(() => db.settings.get('confidenceThreshold'), []);
   const contacts = useQuery(() => db.contacts.toArray(), []) ?? [];
+  const people = useQuery(() => db.people.orderBy('createdAt').toArray(), []) ?? [];
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
   const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
 
@@ -49,6 +58,9 @@ export function TransactionsPage() {
   const [dateFilter, setDateFilter] = useState<DatePreset>('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [bankFilter, setBankFilter] = useState('all');
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);
   const [flash, setFlash] = useState<{ text: string; undo: UndoData | null } | null>(null);
@@ -65,6 +77,17 @@ export function TransactionsPage() {
   }, [txs]);
 
   const visibleTxs = useMemo(() => txs.filter(t => !t.hidden), [txs]);
+
+  const availableBanks = useMemo(() => {
+    const set = new Set(visibleTxs.map(t => t.bank));
+    return Array.from(set).sort();
+  }, [visibleTxs]);
+
+  const availableOwners = useMemo(() => {
+    const set = new Set<string>();
+    visibleTxs.forEach(t => { if (t.owner) set.add(t.owner); });
+    return Array.from(set).sort();
+  }, [visibleTxs]);
   const owedTxIds = useMemo(() => new Set(outstandingEntries.map(e => e.transactionId)), [outstandingEntries]);
 
   const typeCounts = useMemo(() => ({
@@ -94,9 +117,18 @@ export function TransactionsPage() {
         if (t.type !== 'spend' || t.categorySource === 'user' || t.categoryConfidence >= confidenceThreshold) return false;
       } else if (typeFilter !== 'all' && t.type !== typeFilter) return false;
       if (s && !t.merchantRaw.toLowerCase().includes(s) && !(t.merchantNormalized?.toLowerCase().includes(s)) && !(t.notes?.toLowerCase().includes(s))) return false;
+      if (bankFilter !== 'all' && t.bank !== bankFilter) return false;
+      if (ownerFilter !== 'all') {
+        if (ownerFilter === '__unassigned__' && t.owner) return false;
+        if (ownerFilter !== '__unassigned__' && t.owner !== ownerFilter) return false;
+      }
+      if (categoryFilter !== 'all') {
+        if (categoryFilter === '__uncategorized__' && t.categoryId) return false;
+        if (categoryFilter !== '__uncategorized__' && t.categoryId !== categoryFilter) return false;
+      }
       return true;
     });
-  }, [visibleTxs, typeFilter, dateFilter, customFrom, customTo, search, confidenceThreshold]);
+  }, [visibleTxs, typeFilter, dateFilter, customFrom, customTo, search, confidenceThreshold, bankFilter, ownerFilter, categoryFilter]);
 
   const spend = useMemo(() => visibleTxs.filter(t => t.type === 'spend').reduce((s, t) => s + t.amount, 0), [visibleTxs]);
   const income = useMemo(() => visibleTxs.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0), [visibleTxs]);
@@ -127,6 +159,10 @@ export function TransactionsPage() {
 
   async function onTypeChange(tx: Transaction, newType: TxType) {
     await db.transactions.update(tx.id, { type: newType });
+  }
+
+  async function onOwnerChange(tx: Transaction, owner: string | null) {
+    await db.transactions.update(tx.id, { owner: owner ?? undefined });
   }
 
   async function onHide(tx: Transaction) {
@@ -252,6 +288,31 @@ export function TransactionsPage() {
             </button>
           ))}
         </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {availableBanks.length > 1 && (
+            <select value={bankFilter} onChange={e => setBankFilter(e.target.value)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+              <option value="all">All banks</option>
+              {availableBanks.map(b => <option key={b} value={b}>{BANK_NAMES[b] ?? b}</option>)}
+            </select>
+          )}
+          <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <option value="all">All owners</option>
+            <option value="__unassigned__">Unassigned</option>
+            {[...new Set([...availableOwners, ...people.map(p => p.name)])].sort().map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="btn btn-ghost" style={{ fontSize: 12 }}>
+            <option value="all">All categories</option>
+            <option value="__uncategorized__">Uncategorized</option>
+            {categories.filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {(bankFilter !== 'all' || ownerFilter !== 'all' || categoryFilter !== 'all') && (
+            <button className="btn btn-ghost" style={{ fontSize: 11, color: 'var(--ink-mute)' }} onClick={() => { setBankFilter('all'); setOwnerFilter('all'); setCategoryFilter('all'); }}>
+              Clear
+            </button>
+          )}
+        </div>
         <div style={{ flex: 1 }} />
         {filtered.length !== visibleTxs.length && (
           <div style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
@@ -270,6 +331,7 @@ export function TransactionsPage() {
                 <th style={{ width: 52 }}>Bank</th>
                 <th>Merchant</th>
                 <th style={{ width: 200, textAlign: 'right' }}></th>
+                <th style={{ width: 100 }}>Owner</th>
                 <th style={{ width: 110 }}>Type</th>
                 <th style={{ width: 170 }}>Category</th>
                 <th style={{ width: 110 }}>Confidence</th>
@@ -279,17 +341,19 @@ export function TransactionsPage() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={9} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--ink-mute)', fontSize: 13 }}>No transactions match these filters.</td></tr>
+                <tr><td colSpan={10} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--ink-mute)', fontSize: 13 }}>No transactions match these filters.</td></tr>
               ) : filtered.map(t => (
                 <TxRow
                   key={t.id}
                   tx={t}
                   category={t.categoryId ? catMap.get(t.categoryId) : undefined}
                   categories={categories}
+                  people={people}
                   confidenceThreshold={confidenceThreshold}
                   isOwed={owedTxIds.has(t.id)}
                   onCategoryChange={requestCategoryChange}
                   onTypeChange={onTypeChange}
+                  onOwnerChange={onOwnerChange}
                   onSplit={() => setSplitTx(t)}
                   onHide={onHide}
                   onDelete={onDelete}
@@ -363,22 +427,24 @@ export function TransactionsPage() {
       )}
 
       {/* Add transaction modal */}
-      {showAddTx && <AddTxModal categories={categories} onClose={() => setShowAddTx(false)} />}
+      {showAddTx && <AddTxModal categories={categories} people={people} onClose={() => setShowAddTx(false)} />}
     </div>
   );
 }
 
 function TxRow({
-  tx, category, categories, confidenceThreshold, isOwed,
-  onCategoryChange, onTypeChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed, onMarkReviewed,
+  tx, category, categories, people, confidenceThreshold, isOwed,
+  onCategoryChange, onTypeChange, onOwnerChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed, onMarkReviewed,
 }: {
   tx: Transaction;
   category: Category | undefined;
   categories: Category[];
+  people: Person[];
   confidenceThreshold: number;
   isOwed: boolean;
   onCategoryChange: (tx: Transaction, catId: string | null) => void;
   onTypeChange: (tx: Transaction, type: TxType) => void;
+  onOwnerChange: (tx: Transaction, owner: string | null) => void;
   onSplit: () => void;
   onHide: (tx: Transaction) => void;
   onDelete: (tx: Transaction) => void;
@@ -539,6 +605,22 @@ function TxRow({
             </button>
           </div>
         </td>
+        {/* Owner column */}
+        <td>
+          <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+            <span style={{ fontSize: 11, color: tx.owner ? 'var(--ink-soft)' : 'var(--ink-mute)', background: 'oklch(50% 0.01 260 / 0.06)', padding: '2px 6px', borderRadius: 6, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 88 }}>
+              {tx.owner ?? '—'}
+            </span>
+            <select
+              value={tx.owner ?? ''}
+              onChange={e => onOwnerChange(tx, e.target.value || null)}
+              style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
+            >
+              <option value="">Unassigned</option>
+              {people.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
+        </td>
         <td>
           <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
             <span className="mono" style={{ fontSize: 11, color: 'var(--ink-soft)', background: 'oklch(50% 0.01 260 / 0.06)', padding: '2px 6px', borderRadius: 6, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 94 }}>
@@ -674,7 +756,7 @@ function SpreadMonthsDialog({ tx, onClose }: { tx: Transaction; onClose: () => v
   );
 }
 
-function AddTxModal({ categories, onClose }: { categories: Category[]; onClose: () => void }) {
+function AddTxModal({ categories, people, onClose }: { categories: Category[]; people: Person[]; onClose: () => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [merchant, setMerchant] = useState('');
   const [amount, setAmount] = useState('');
@@ -682,6 +764,7 @@ function AddTxModal({ categories, onClose }: { categories: Category[]; onClose: 
   const [categoryId, setCategoryId] = useState('');
   const [bank, setBank] = useState<Bank>('amex');
   const [notes, setNotes] = useState('');
+  const [owner, setOwner] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -706,6 +789,7 @@ function AddTxModal({ categories, onClose }: { categories: Category[]; onClose: 
       type,
       dedupeKey: `manual-${nanoid()}`,
       notes: notes.trim() || undefined,
+      owner: owner || undefined,
       hidden: false,
     });
     onClose();
@@ -758,7 +842,14 @@ function AddTxModal({ categories, onClose }: { categories: Category[]; onClose: 
               {categories.filter(c => !c.archived && (type === 'income' ? c.isIncome : !c.isIncome)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div style={{ ...F, gridColumn: '1 / -1' }}>
+          <div style={F}>
+            <label style={L}>Owner (optional)</label>
+            <select style={sel} value={owner} onChange={e => setOwner(e.target.value)}>
+              <option value="">Unassigned</option>
+              {people.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
+          <div style={F}>
             <label style={L}>Notes (optional)</label>
             <input className="input" style={{ width: '100%' }} placeholder="e.g. Mom's medication pickup" value={notes} onChange={e => setNotes(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') save(); }} />
           </div>

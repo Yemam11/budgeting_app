@@ -28,6 +28,7 @@ export interface Transaction {
   spreadMonths?: number;
   notes?: string;
   hidden?: boolean;
+  owner?: string | null;
   dedupeKey: string;
   rawRow?: Record<string, unknown>;
 }
@@ -84,4 +85,15 @@ export interface Contact {
 export interface AppSetting {
   key: string;
   value: unknown;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export interface CategoryForward {
+  fromCategoryId: string;
+  toCategoryId: string;
 }

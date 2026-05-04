@@ -11,6 +11,7 @@ if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 const sqldb = new DatabaseSync(join(DATA_DIR, 'budget.db'));
 sqldb.exec('PRAGMA journal_mode = WAL;');
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN spreadMonths INTEGER'); } catch {}
+try { sqldb.exec('ALTER TABLE transactions ADD COLUMN owner TEXT'); } catch {}
 
 sqldb.exec(`
   CREATE TABLE IF NOT EXISTS transactions (
@@ -77,6 +78,15 @@ sqldb.exec(`
     name TEXT NOT NULL,
     createdAt INTEGER
   );
+  CREATE TABLE IF NOT EXISTS people (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    createdAt INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS category_forwards (
+    fromCategoryId TEXT PRIMARY KEY,
+    toCategoryId TEXT NOT NULL
+  );
 `);
 try { sqldb.exec('ALTER TABLE import_batches ADD COLUMN dateFrom TEXT'); } catch {}
 try { sqldb.exec('ALTER TABLE import_batches ADD COLUMN dateTo TEXT'); } catch {}
@@ -88,8 +98,10 @@ const TABLES = {
   budgets:          { sql: 'budgets',        pk: 'categoryId' },
   'import-batches': { sql: 'import_batches', pk: 'id' },
   outstanding:      { sql: 'outstanding',    pk: 'id' },
-  settings:         { sql: 'settings',       pk: 'key' },
-  contacts:         { sql: 'contacts',       pk: 'id' },
+  settings:            { sql: 'settings',          pk: 'key' },
+  contacts:            { sql: 'contacts',           pk: 'id' },
+  people:              { sql: 'people',             pk: 'id' },
+  'category-forwards': { sql: 'category_forwards',  pk: 'fromCategoryId' },
 };
 
 const QUOTED_COLS = new Set(['order']);

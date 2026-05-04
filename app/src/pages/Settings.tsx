@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
+import { nanoid } from 'nanoid';
 import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
-import type { Category, MerchantRule } from '../types';
+import type { Category, MerchantRule, Person } from '../types';
 import { bulkRecategorizeByCategory } from '../lib/recategorize';
 import { exportAll, importAll, wipeAll } from '../lib/backup';
 import { Icon, CatSwatch, Toggle } from '../components/Primitives';
@@ -27,6 +28,7 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
 export function SettingsPage({ userName = '' }: { userName?: string }) {
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
   const merchantRules = useQuery(() => db.merchantRules.toArray(), []) ?? [];
+  const people = useQuery(() => db.people.orderBy('createdAt').toArray(), []) ?? [];
   const txCount = useQuery(() => db.transactions.count(), []) ?? 0;
 
   const rawThreshold = useQuery(() => db.settings.get('confidenceThreshold'), []);
@@ -40,6 +42,14 @@ export function SettingsPage({ userName = '' }: { userName?: string }) {
   const [status, setStatus] = useState<string | null>(null);
   const [editingRule, setEditingRule] = useState<{ rule: MerchantRule; newCatId: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // People management
+  const [newPersonName, setNewPersonName] = useState('');
+
+  // Category delete reclassify dialog
+  const [deletePending, setDeletePending] = useState<Category | null>(null);
+  const [deletePendingCount, setDeletePendingCount] = useState(0);
+  const [reclassifyTargetId, setReclassifyTargetId] = useState('');
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -99,14 +109,50 @@ export function SettingsPage({ userName = '' }: { userName?: string }) {
   }
 
   async function deleteCategory(c: Category) {
+    setEditing(null);
     const count = await db.transactions.where('categoryId').equals(c.id).count();
-    if (count > 0) {
-      if (!window.confirm(`"${c.name}" is used by ${count} transactions. They will be re-set to Uncategorized. Proceed?`)) return;
-      await bulkRecategorizeByCategory(c.id, null);
+    setDeletePendingCount(count);
+    setReclassifyTargetId('');
+    setDeletePending(c);
+  }
+
+  async function confirmDeleteCategory() {
+    if (!deletePending) return;
+    const c = deletePending;
+    setDeletePending(null);
+    const targetId = reclassifyTargetId || null;
+
+    await bulkRecategorizeByCategory(c.id, targetId);
+
+    if (targetId) {
+      // Redirect merchant rules that pointed to the deleted category
+      const affected = merchantRules.filter(r => r.categoryId === c.id);
+      for (const rule of affected) {
+        await db.merchantRules.put({ ...rule, categoryId: targetId, lastUpdated: Date.now() });
+      }
+      // Save the permanent forward rule for future imports
+      await db.categoryForwards.put({ fromCategoryId: c.id, toCategoryId: targetId });
+    } else {
+      await db.merchantRules.where('categoryId').equals(c.id).delete();
     }
+
     await db.categories.delete(c.id);
-    await db.merchantRules.where('categoryId').equals(c.id).delete();
     await db.budgets.delete(c.id);
+  }
+
+  async function addPerson() {
+    const name = newPersonName.trim();
+    if (!name) return;
+    if (people.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+      setStatus('A person with that name already exists.'); setTimeout(() => setStatus(null), 3000); return;
+    }
+    await db.people.add({ id: nanoid(), name, createdAt: Date.now() });
+    setNewPersonName('');
+  }
+
+  async function deletePerson(p: Person) {
+    if (!window.confirm(`Remove "${p.name}"? Transactions tagged to them will keep the tag.`)) return;
+    await db.people.delete(p.id);
   }
 
   async function downloadBackup() {
@@ -267,6 +313,42 @@ export function SettingsPage({ userName = '' }: { userName?: string }) {
         </div>
       </Section>
 
+      {/* People */}
+      <Section title="People" desc="Custom names you can tag to transactions to track who they're for.">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {people.length === 0 && (
+            <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginBottom: 10 }}>
+              No people added yet. Add a name below to start tagging transactions.
+            </div>
+          )}
+          {people.map((p, idx) => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: idx < people.length - 1 ? '1px solid var(--line)' : 'none' }}>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{p.name}</span>
+              <button
+                onClick={() => deletePerson(p)}
+                title="Remove"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+              >
+                <Icon name="trash" size={14} />
+              </button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, marginTop: people.length ? 10 : 0 }}>
+            <input
+              className="input"
+              placeholder="Add person…"
+              value={newPersonName}
+              onChange={e => setNewPersonName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addPerson(); }}
+              style={{ flex: 1, fontSize: 13 }}
+            />
+            <button className="btn btn-ghost" onClick={addPerson} disabled={!newPersonName.trim()}>
+              <Icon name="plus" size={12} />Add
+            </button>
+          </div>
+        </div>
+      </Section>
+
       {/* Categories */}
       <Section title="Categories" desc={`${activeCategories.length} active · manage colors, names, and archive.`}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -391,6 +473,50 @@ export function SettingsPage({ userName = '' }: { userName?: string }) {
           </div>
         )}
       </Section>
+
+      {/* Category delete + reclassify dialog */}
+      {deletePending && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(10,12,18,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setDeletePending(null)}
+        >
+          <div className="glass" style={{ padding: 24, maxWidth: 420, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Delete "{deletePending.name}"</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginBottom: 20 }}>
+              {deletePendingCount > 0
+                ? <><strong style={{ color: 'var(--ink)' }}>{deletePendingCount} transaction{deletePendingCount === 1 ? '' : 's'}</strong> will be reclassified. Choose a category to move them to, or leave blank to set them as Uncategorized.</>
+                : <>No transactions use this category. It will be deleted.</>}
+              <div style={{ marginTop: 12, fontSize: 12, color: 'oklch(55% 0.14 75)' }}>
+                Merchant rules and future imports will also be redirected to the chosen category.
+              </div>
+            </div>
+            {deletePendingCount > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <select
+                  value={reclassifyTargetId}
+                  onChange={e => setReclassifyTargetId(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid var(--line-strong)', background: 'color-mix(in oklab, white 60%, transparent)', fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--sans)' }}
+                >
+                  <option value="">Uncategorized</option>
+                  {categories.filter(c => !c.archived && c.id !== deletePending.id).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setDeletePending(null)}>Cancel</button>
+              <button
+                className="btn"
+                style={{ background: 'var(--danger-soft)', color: 'var(--danger)', borderColor: 'color-mix(in oklab, var(--danger), transparent 70%)' }}
+                onClick={confirmDeleteCategory}
+              >
+                <Icon name="trash" size={13} />Delete{reclassifyTargetId ? ` & reclassify to ${catMap.get(reclassifyTargetId)?.name}` : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rule edit scope dialog */}
       {editingRule && (

@@ -6,6 +6,17 @@ import type { ParseResult } from '../parsers';
 import { normalizeMerchant, makeDedupeKey } from './normalize';
 import { categorize } from './categorizer';
 
+function resolveCategoryForward(catId: string | null, forwards: Map<string, string>): string | null {
+  if (!catId || !forwards.size) return catId;
+  const seen = new Set<string>();
+  let cur = catId;
+  while (forwards.has(cur) && !seen.has(cur)) {
+    seen.add(cur);
+    cur = forwards.get(cur)!;
+  }
+  return cur;
+}
+
 export interface ImportPreview {
   filename: string;
   parseResult: ParseResult;
@@ -28,6 +39,11 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
     merchantRulesArr.map((r) => [r.merchantNormalized, r]),
   );
 
+  const categoryForwardsArr = await db.categoryForwards.toArray();
+  const categoryForwards = new Map<string, string>(
+    categoryForwardsArr.map((f) => [f.fromCategoryId, f.toCategoryId]),
+  );
+
   const batchId = nanoid();
   const candidates: Transaction[] = [];
   const duplicateRows: Transaction[] = [];
@@ -44,7 +60,9 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
     });
 
     const descForCat = r.descriptionForCategorization ?? r.merchantRaw;
-    const cat = categorize(merchantNormalized, descForCat, r.type, merchantRules);
+    const catRaw = categorize(merchantNormalized, descForCat, r.type, merchantRules);
+    const resolvedCatId = resolveCategoryForward(catRaw.categoryId, categoryForwards);
+    const cat = resolvedCatId !== catRaw.categoryId ? { ...catRaw, categoryId: resolvedCatId } : catRaw;
     const tx: Transaction = {
       id: nanoid(),
       bank: r.bank,

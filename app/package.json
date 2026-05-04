@@ -41,7 +41,13 @@
     ],
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "category": "public.app-category.finance",
       "icon": "public/WealthWise Icon.icns"
@@ -64,6 +70,7 @@
   "dependencies": {
     "concurrently": "^9.1.0",
     "date-fns": "^3.6.0",
+    "electron-updater": "^6.8.3",
     "express": "^4.21.0",
     "nanoid": "^5.0.7",
     "papaparse": "^5.4.1",

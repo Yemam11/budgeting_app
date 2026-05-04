@@ -72,12 +72,9 @@ export function BudgetsPage() {
           <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>Monthly limits</div>
           <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>{monthLabel(monthKeyState)} · Day {dayOfMonth} of {daysInMonth}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select value={monthKeyState} onChange={e => setMonthKeyState(e.target.value)} className="btn btn-ghost" style={{ appearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}>
-            {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <button className="btn btn-primary"><Icon name="plus" size={14} />Add budget</button>
-        </div>
+        <select value={monthKeyState} onChange={e => setMonthKeyState(e.target.value)} className="btn btn-ghost" style={{ appearance: 'none', paddingRight: 28, backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}>
+          {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
       </div>
 
       {/* Hero summary */}
