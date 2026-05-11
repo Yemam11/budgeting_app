@@ -12,8 +12,16 @@ const sqldb = new DatabaseSync(join(DATA_DIR, 'budget.db'));
 sqldb.exec('PRAGMA journal_mode = WAL;');
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN spreadMonths INTEGER'); } catch {}
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN owner TEXT'); } catch {}
+try { sqldb.exec('ALTER TABLE transactions ADD COLUMN envelopeId TEXT'); } catch {}
 
 sqldb.exec(`
+  CREATE TABLE IF NOT EXISTS envelopes (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    color TEXT,
+    createdAt INTEGER
+  );
   CREATE TABLE IF NOT EXISTS transactions (
     id TEXT PRIMARY KEY,
     bank TEXT,
@@ -102,6 +110,7 @@ const TABLES = {
   contacts:            { sql: 'contacts',           pk: 'id' },
   people:              { sql: 'people',             pk: 'id' },
   'category-forwards': { sql: 'category_forwards',  pk: 'fromCategoryId' },
+  envelopes:           { sql: 'envelopes',           pk: 'id' },
 };
 
 const QUOTED_COLS = new Set(['order']);

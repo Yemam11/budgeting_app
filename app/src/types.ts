@@ -29,6 +29,7 @@ export interface Transaction {
   notes?: string;
   hidden?: boolean;
   owner?: string | null;
+  envelopeId?: string | null;
   dedupeKey: string;
   rawRow?: Record<string, unknown>;
 }
@@ -96,4 +97,12 @@ export interface Person {
 export interface CategoryForward {
   fromCategoryId: string;
   toCategoryId: string;
+}
+
+export interface Envelope {
+  id: string;
+  name: string;
+  description?: string;
+  color: string;
+  createdAt: number;
 }

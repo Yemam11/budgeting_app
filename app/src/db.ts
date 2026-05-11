@@ -1,7 +1,7 @@
 import type {
   Transaction, Category, MerchantRule, Budget,
   ImportBatch, OutstandingEntry, AppSetting, Contact,
-  Person, CategoryForward,
+  Person, CategoryForward, Envelope,
 } from './types';
 
 // All API calls go through Vite's proxy → http://localhost:3001
@@ -216,6 +216,7 @@ class BudgetDb {
   contacts         = new ApiTable<Contact>('contacts');
   people           = new ApiTable<Person>('people');
   categoryForwards = new ApiTable<CategoryForward, string>('category-forwards');
+  envelopes        = new ApiTable<Envelope>('envelopes');
 
   // No real transaction support over HTTP; run the callback and let mutations
   // batch their own invalidations via the debounce in invalidateDb().

@@ -9,15 +9,17 @@ import { BudgetsPage } from './pages/Budgets';
 import { OutstandingPage } from './pages/Outstanding';
 import { ContactsPage } from './pages/Contacts';
 import { SettingsPage } from './pages/Settings';
+import { EnvelopesPage } from './pages/Envelopes';
 import { Icon } from './components/Primitives';
 
-type Tab = 'dashboard' | 'import' | 'transactions' | 'budgets' | 'outstanding' | 'contacts' | 'settings';
+type Tab = 'dashboard' | 'import' | 'transactions' | 'budgets' | 'envelopes' | 'outstanding' | 'contacts' | 'settings';
 
 const NAV: ({ section: string } | { id: Tab; label: string; icon: string })[] = [
   { section: 'General' },
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'transactions', label: 'Transactions', icon: 'transactions' },
   { id: 'budgets', label: 'Budgets', icon: 'budget' },
+  { id: 'envelopes', label: 'Envelopes', icon: 'envelope' },
   { section: 'Tools' },
   { id: 'import', label: 'Import', icon: 'import' },
   { id: 'outstanding', label: 'Owed to you', icon: 'owed' },
@@ -159,6 +161,7 @@ export default function App() {
           {tab === 'import' && <ImportPage />}
           {tab === 'transactions' && <TransactionsPage />}
           {tab === 'budgets' && <BudgetsPage />}
+          {tab === 'envelopes' && <EnvelopesPage />}
           {tab === 'outstanding' && <OutstandingPage />}
           {tab === 'contacts' && <ContactsPage />}
           {tab === 'settings' && <SettingsPage userName={userName} />}
