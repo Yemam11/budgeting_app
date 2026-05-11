@@ -22,10 +22,16 @@ export function OutstandingPage() {
   const outstanding = entries.filter(e => e.status !== 'settled');
   const settled = entries.filter(e => e.status === 'settled');
 
-  const byPerson = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const e of outstanding) m.set(e.personName, (m.get(e.personName) ?? 0) + e.amount);
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+  const byPersonGrouped = useMemo(() => {
+    const m = new Map<string, OutstandingEntry[]>();
+    for (const e of outstanding) {
+      const arr = m.get(e.personName) ?? [];
+      arr.push(e);
+      m.set(e.personName, arr);
+    }
+    return Array.from(m.entries())
+      .map(([name, entries]) => ({ name, entries, total: entries.reduce((s, e) => s + e.amount, 0) }))
+      .sort((a, b) => b.total - a.total);
   }, [outstanding]);
 
   const totalOutstanding = outstanding.reduce((s, e) => s + e.amount, 0);
@@ -109,48 +115,22 @@ export function OutstandingPage() {
 
       {/* Summary card */}
       <div className="glass" style={{ padding: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: byPerson.length > 0 ? 16 : 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
           <div>
             <div className="eyebrow" style={{ marginBottom: 4 }}>Total outstanding</div>
             <div className="mono" style={{ fontSize: 32, fontWeight: 500, letterSpacing: '-0.02em' }}>
               {fmtCAD(totalOutstanding)}
             </div>
           </div>
-          {byPerson.length > 0 && (
+          {byPersonGrouped.length > 0 && (
             <div style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
-              across {byPerson.length} {byPerson.length === 1 ? 'person' : 'people'} · {outstanding.length} {outstanding.length === 1 ? 'transaction' : 'transactions'}
+              across {byPersonGrouped.length} {byPersonGrouped.length === 1 ? 'person' : 'people'} · {outstanding.length} {outstanding.length === 1 ? 'transaction' : 'transactions'}
             </div>
           )}
         </div>
 
-        {byPerson.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(byPerson.length, 4)}, 1fr)`, gap: 10 }}>
-            {byPerson.map(([name, amt]) => (
-              <div key={name} style={{ padding: 14, borderRadius: 12, background: 'color-mix(in oklab, white 60%, transparent)', border: '1px solid var(--line)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{
-                    width: 30, height: 30, borderRadius: '50%',
-                    background: `oklch(70% 0.08 ${(name.charCodeAt(0) * 7) % 360})`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: 'white', fontSize: 12, fontWeight: 500, flexShrink: 0,
-                  }}>
-                    {name[0]}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: 13 }}>{name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-mute)' }}>
-                      {outstanding.filter(e => e.personName === name).length} open
-                    </div>
-                  </div>
-                  <div className="mono" style={{ fontWeight: 500, fontSize: 13 }}>{fmtCAD(amt)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {byPerson.length === 0 && (
-          <div style={{ fontSize: 13, color: 'var(--ink-mute)' }}>Nothing outstanding right now.</div>
+        {byPersonGrouped.length === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginTop: 8 }}>Nothing outstanding right now.</div>
         )}
       </div>
 
@@ -165,198 +145,230 @@ export function OutstandingPage() {
         </div>
       )}
 
-      {/* Outstanding table */}
-      <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)', fontWeight: 500, fontSize: 13 }}>
-          Outstanding ({outstanding.length})
+      {/* Per-contact sections */}
+      {byPersonGrouped.length === 0 && (
+        <div className="glass" style={{ padding: '28px 20px', textAlign: 'center', fontSize: 13, color: 'var(--ink-mute)' }}>
+          No outstanding amounts
         </div>
-        <table className="data">
-          <thead>
-            <tr>
-              <th>Person</th>
-              <th>Originated from</th>
-              <th style={{ width: 110 }}>Date</th>
-              <th style={{ width: 110, textAlign: 'right' }}>Amount</th>
-              <th style={{ width: 160 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {outstanding.map(e => {
-              const isExpanded = expandedId === e.id;
-              const src = txMap.get(e.transactionId);
-              const directs = (matchData.directMatches.get(e.id) ?? []).filter(m => !dismissed.has(dKey(e.id, m.tx.id)));
-              const splits = (matchData.splitMatches.get(e.id) ?? []).filter(m => !dismissed.has(dKey(e.id, m.tx.id)));
-              const hasMatches = directs.length > 0 || splits.length > 0;
+      )}
 
-              return (
-                <Fragment key={e.id}>
-                  <tr
-                    onClick={() => setExpandedId(isExpanded ? null : e.id)}
-                    style={{ cursor: 'pointer', background: isExpanded ? 'color-mix(in oklab, var(--accent-soft), white 40%)' : undefined }}
-                  >
-                    <td style={{ fontWeight: 500 }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {e.personName}
-                        {hasMatches && (
-                          <span
-                            style={{ width: 7, height: 7, borderRadius: '50%', background: 'oklch(62% 0.16 75)', flexShrink: 0, boxShadow: '0 0 0 3px oklch(62% 0.16 75 / 0.2)' }}
-                            title="Possible repayment detected"
-                          />
-                        )}
-                      </span>
-                    </td>
-                    <td>{src?.merchantRaw ?? '—'}</td>
-                    <td className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>{src?.date ?? '—'}</td>
-                    <td className="mono" style={{ textAlign: 'right', fontWeight: 500 }}>{fmtCAD(e.amount)}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-                        <span style={{ color: 'var(--ink-mute)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'flex' }}>
-                          <Icon name="chevron_down" size={13} />
-                        </span>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ fontSize: 11, padding: '4px 10px', color: 'var(--danger)', borderColor: 'color-mix(in oklab, var(--danger), transparent 70%)' }}
-                          onClick={async evt => {
-                            evt.stopPropagation();
-                            if (window.confirm(`Remove the owed entry for ${e.personName} (${fmtCAD(e.amount)})?`)) {
-                              await db.outstanding.delete(e.id);
-                              const remaining = await db.outstanding.where('transactionId').equals(e.transactionId).toArray();
-                              if (!remaining.some(r => r.status !== 'settled')) {
-                                await clearSplit(e.transactionId);
-                              }
-                            }
-                          }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ fontSize: 11, padding: '4px 10px' }}
-                          onClick={evt => { evt.stopPropagation(); manuallySettle(e.id); }}
-                        >
-                          Mark paid
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+      {byPersonGrouped.map(({ name, entries, total }) => {
+        const hue = (name.charCodeAt(0) * 7) % 360;
+        const groupMatchCount = entries.filter(e =>
+          (matchData.directMatches.get(e.id)?.length ?? 0) > 0 ||
+          (matchData.splitMatches.get(e.id)?.length ?? 0) > 0
+        ).length;
 
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={5} style={{ padding: 0, background: 'color-mix(in oklab, var(--accent-soft), white 55%)', borderBottom: '1px solid var(--line)' }}>
-                        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-                          {/* Origin transaction */}
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-                              Origin transaction
-                            </div>
-                            {src ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'white', borderRadius: 8, border: '1px solid var(--line)' }}>
-                                <span style={{ color: 'var(--ink-mute)', display: 'flex' }}><Icon name="arrow_down_right" size={14} /></span>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontWeight: 500, fontSize: 13 }}>{src.merchantRaw}</div>
-                                  <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>{src.date}</div>
-                                </div>
-                                <div className="mono" style={{ fontWeight: 500, fontSize: 13 }}>{fmtCAD(Math.abs(src.amount))}</div>
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: 12, color: 'var(--ink-mute)' }}>Original transaction not found.</div>
-                            )}
-                          </div>
-
-                          {/* Repayment suggestions */}
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
-                              Possible repayments
-                            </div>
-
-                            {directs.length === 0 && splits.length === 0 ? (
-                              <div style={{ fontSize: 12, color: 'var(--ink-mute)', padding: '10px 0' }}>
-                                No matching income transactions found within {MATCH_WINDOW_DAYS} days. Use "Mark paid" to settle manually.
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {directs.map(m => {
-                                  const diff = Math.abs(Math.abs(m.tx.amount) - e.amount);
-                                  const label = diff < 0.01 ? 'Exact match' : `Δ${fmtCAD(diff)}`;
-                                  return (
-                                    <div
-                                      key={m.tx.id}
-                                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'color-mix(in oklab, oklch(95% 0.06 75), white 40%)', borderRadius: 8, border: '1px solid oklch(80% 0.1 75 / 0.4)' }}
-                                    >
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.tx.merchantRaw}</div>
-                                        <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>
-                                          {m.tx.date} · {m.daysAfter} day{m.daysAfter === 1 ? '' : 's'} after ·{' '}
-                                          <span className="mono">{fmtCAD(Math.abs(m.tx.amount))}</span> · {label}
-                                        </div>
-                                      </div>
-                                      <button
-                                        className="btn btn-ghost"
-                                        style={{ fontSize: 11, flexShrink: 0 }}
-                                        onClick={() => dismiss(e.id, m.tx.id)}
-                                      >
-                                        <Icon name="x" size={11} />Not a match
-                                      </button>
-                                      <button
-                                        className="btn btn-primary"
-                                        style={{ fontSize: 11, flexShrink: 0 }}
-                                        onClick={() => { confirmSettlement(e.id, m.tx.id); setExpandedId(null); }}
-                                      >
-                                        <Icon name="check" size={11} />Confirm settled
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-
-                                {splits.map(m => (
-                                  <div
-                                    key={`split-${m.tx.id}`}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'color-mix(in oklab, oklch(95% 0.05 260), white 50%)', borderRadius: 8, border: '1px solid oklch(75% 0.08 260 / 0.4)' }}
-                                  >
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.tx.merchantRaw}</div>
-                                      <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>
-                                        {m.tx.date} · <span className="mono">{fmtCAD(Math.abs(m.tx.amount))}</span> covers all {m.coverEntries.length} amounts owed by {e.personName} ({fmtCAD(m.coverEntries.reduce((s, ce) => s + ce.amount, 0))})
-                                      </div>
-                                    </div>
-                                    <button
-                                      className="btn btn-ghost"
-                                      style={{ fontSize: 11, flexShrink: 0 }}
-                                      onClick={() => dismiss(e.id, m.tx.id)}
-                                    >
-                                      <Icon name="x" size={11} />Not a match
-                                    </button>
-                                    <button
-                                      className="btn btn-primary"
-                                      style={{ fontSize: 11, flexShrink: 0 }}
-                                      onClick={() => { settleMultiple(m.coverEntries.map(ce => ce.id), m.tx.id); setExpandedId(null); }}
-                                    >
-                                      <Icon name="check" size={11} />Settle all {m.coverEntries.length} from {e.personName}
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
+        return (
+          <div key={name} className="glass" style={{ padding: 0, overflow: 'hidden' }}>
+            {/* Contact header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '14px 20px', borderBottom: '1px solid var(--line)',
+              background: `oklch(97% 0.01 ${hue})`,
+            }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: '50%',
+                background: `oklch(68% 0.10 ${hue})`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'white', fontSize: 14, fontWeight: 600, flexShrink: 0,
+              }}>
+                {name[0].toUpperCase()}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{name}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 1 }}>
+                  {entries.length} {entries.length === 1 ? 'transaction' : 'transactions'}
+                  {groupMatchCount > 0 && (
+                    <span style={{ marginLeft: 6, color: 'oklch(52% 0.16 75)' }}>
+                      · {groupMatchCount} possible {groupMatchCount === 1 ? 'repayment' : 'repayments'}
+                    </span>
                   )}
-                </Fragment>
-              );
-            })}
+                </div>
+              </div>
+              <div className="mono" style={{ fontWeight: 600, fontSize: 18 }}>{fmtCAD(total)}</div>
+            </div>
 
-            {outstanding.length === 0 && (
-              <tr>
-                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--ink-mute)', padding: '28px 0', fontSize: 13 }}>
-                  No outstanding amounts
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            {/* Transactions table */}
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Transaction</th>
+                  <th style={{ width: 110 }}>Date</th>
+                  <th style={{ width: 110, textAlign: 'right' }}>Amount</th>
+                  <th style={{ width: 160 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map(e => {
+                  const isExpanded = expandedId === e.id;
+                  const src = txMap.get(e.transactionId);
+                  const directs = (matchData.directMatches.get(e.id) ?? []).filter(m => !dismissed.has(dKey(e.id, m.tx.id)));
+                  const splits = (matchData.splitMatches.get(e.id) ?? []).filter(m => !dismissed.has(dKey(e.id, m.tx.id)));
+                  const hasMatches = directs.length > 0 || splits.length > 0;
+
+                  return (
+                    <Fragment key={e.id}>
+                      <tr
+                        onClick={() => setExpandedId(isExpanded ? null : e.id)}
+                        style={{ cursor: 'pointer', background: isExpanded ? 'color-mix(in oklab, var(--accent-soft), white 40%)' : undefined }}
+                      >
+                        <td style={{ fontWeight: 500 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {src?.merchantRaw ?? '—'}
+                            {hasMatches && (
+                              <span
+                                style={{ width: 7, height: 7, borderRadius: '50%', background: 'oklch(62% 0.16 75)', flexShrink: 0, boxShadow: '0 0 0 3px oklch(62% 0.16 75 / 0.2)' }}
+                                title="Possible repayment detected"
+                              />
+                            )}
+                          </span>
+                        </td>
+                        <td className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>{src?.date ?? '—'}</td>
+                        <td className="mono" style={{ textAlign: 'right', fontWeight: 500 }}>{fmtCAD(e.amount)}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                            <span style={{ color: 'var(--ink-mute)', transition: 'transform 0.15s', transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'flex' }}>
+                              <Icon name="chevron_down" size={13} />
+                            </span>
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 11, padding: '4px 10px', color: 'var(--danger)', borderColor: 'color-mix(in oklab, var(--danger), transparent 70%)' }}
+                              onClick={async evt => {
+                                evt.stopPropagation();
+                                if (window.confirm(`Remove the owed entry for ${e.personName} (${fmtCAD(e.amount)})?`)) {
+                                  await db.outstanding.delete(e.id);
+                                  const remaining = await db.outstanding.where('transactionId').equals(e.transactionId).toArray();
+                                  if (!remaining.some(r => r.status !== 'settled')) {
+                                    await clearSplit(e.transactionId);
+                                  }
+                                }
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 11, padding: '4px 10px' }}
+                              onClick={evt => { evt.stopPropagation(); manuallySettle(e.id); }}
+                            >
+                              Mark paid
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={4} style={{ padding: 0, background: 'color-mix(in oklab, var(--accent-soft), white 55%)', borderBottom: '1px solid var(--line)' }}>
+                            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+                              {/* Origin transaction */}
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                                  Origin transaction
+                                </div>
+                                {src ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'white', borderRadius: 8, border: '1px solid var(--line)' }}>
+                                    <span style={{ color: 'var(--ink-mute)', display: 'flex' }}><Icon name="arrow_down_right" size={14} /></span>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontWeight: 500, fontSize: 13 }}>{src.merchantRaw}</div>
+                                      <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>{src.date}</div>
+                                    </div>
+                                    <div className="mono" style={{ fontWeight: 500, fontSize: 13 }}>{fmtCAD(Math.abs(src.amount))}</div>
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: 12, color: 'var(--ink-mute)' }}>Original transaction not found.</div>
+                                )}
+                              </div>
+
+                              {/* Repayment suggestions */}
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                                  Possible repayments
+                                </div>
+
+                                {directs.length === 0 && splits.length === 0 ? (
+                                  <div style={{ fontSize: 12, color: 'var(--ink-mute)', padding: '10px 0' }}>
+                                    No matching income transactions found within {MATCH_WINDOW_DAYS} days. Use "Mark paid" to settle manually.
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {directs.map(m => {
+                                      const diff = Math.abs(Math.abs(m.tx.amount) - e.amount);
+                                      const label = diff < 0.01 ? 'Exact match' : `Δ${fmtCAD(diff)}`;
+                                      return (
+                                        <div
+                                          key={m.tx.id}
+                                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'color-mix(in oklab, oklch(95% 0.06 75), white 40%)', borderRadius: 8, border: '1px solid oklch(80% 0.1 75 / 0.4)' }}
+                                        >
+                                          <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.tx.merchantRaw}</div>
+                                            <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>
+                                              {m.tx.date} · {m.daysAfter} day{m.daysAfter === 1 ? '' : 's'} after ·{' '}
+                                              <span className="mono">{fmtCAD(Math.abs(m.tx.amount))}</span> · {label}
+                                            </div>
+                                          </div>
+                                          <button
+                                            className="btn btn-ghost"
+                                            style={{ fontSize: 11, flexShrink: 0 }}
+                                            onClick={() => dismiss(e.id, m.tx.id)}
+                                          >
+                                            <Icon name="x" size={11} />Not a match
+                                          </button>
+                                          <button
+                                            className="btn btn-primary"
+                                            style={{ fontSize: 11, flexShrink: 0 }}
+                                            onClick={() => { confirmSettlement(e.id, m.tx.id); setExpandedId(null); }}
+                                          >
+                                            <Icon name="check" size={11} />Confirm settled
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+
+                                    {splits.map(m => (
+                                      <div
+                                        key={`split-${m.tx.id}`}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'color-mix(in oklab, oklch(95% 0.05 260), white 50%)', borderRadius: 8, border: '1px solid oklch(75% 0.08 260 / 0.4)' }}
+                                      >
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.tx.merchantRaw}</div>
+                                          <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>
+                                            {m.tx.date} · <span className="mono">{fmtCAD(Math.abs(m.tx.amount))}</span> covers all {m.coverEntries.length} amounts owed by {e.personName} ({fmtCAD(m.coverEntries.reduce((s, ce) => s + ce.amount, 0))})
+                                          </div>
+                                        </div>
+                                        <button
+                                          className="btn btn-ghost"
+                                          style={{ fontSize: 11, flexShrink: 0 }}
+                                          onClick={() => dismiss(e.id, m.tx.id)}
+                                        >
+                                          <Icon name="x" size={11} />Not a match
+                                        </button>
+                                        <button
+                                          className="btn btn-primary"
+                                          style={{ fontSize: 11, flexShrink: 0 }}
+                                          onClick={() => { settleMultiple(m.coverEntries.map(ce => ce.id), m.tx.id); setExpandedId(null); }}
+                                        >
+                                          <Icon name="check" size={11} />Settle all {m.coverEntries.length} from {e.personName}
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
 
       {/* Settled (collapsible) */}
       {settled.length > 0 && (
