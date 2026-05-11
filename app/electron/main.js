@@ -40,7 +40,15 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = !isMac;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('error', () => {});
+  autoUpdater.on('error', (err) => {
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Update Error',
+      message: 'Auto-update failed',
+      detail: err?.message ?? String(err),
+      buttons: ['OK'],
+    });
+  });
 
   if (isMac) {
     autoUpdater.on('update-available', (info) => {
