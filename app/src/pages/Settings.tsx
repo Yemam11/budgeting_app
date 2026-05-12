@@ -270,7 +270,7 @@ export function SettingsPage({ userName = '' }: { userName?: string }) {
       {/* Data & privacy */}
       <Section title="Data & privacy" desc="Your data stays on this device.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: 'color-mix(in oklab, var(--accent-soft), white 60%)', borderRadius: 10, border: '1px solid color-mix(in oklab, var(--accent), transparent 70%)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: 'var(--accent-soft)', borderRadius: 10, border: '1px solid color-mix(in oklab, var(--accent), transparent 70%)' }}>
             <Icon name="lock" size={18} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 500 }}>Local-only mode</div>
@@ -495,7 +495,7 @@ export function SettingsPage({ userName = '' }: { userName?: string }) {
                 <select
                   value={reclassifyTargetId}
                   onChange={e => setReclassifyTargetId(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid var(--line-strong)', background: 'color-mix(in oklab, white 60%, transparent)', fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--sans)' }}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1px solid var(--line-strong)', background: 'var(--native-select-bg)', fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--sans)' }}
                 >
                   <option value="">Uncategorized</option>
                   {categories.filter(c => !c.archived && c.id !== deletePending.id).map(c => (

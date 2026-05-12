@@ -27,9 +27,7 @@ export function DropZone({ onFiles, accept = '.csv,.xls,.xlsx', busy = false }: 
         border: drag
           ? '1.5px dashed var(--accent)'
           : '1.5px dashed color-mix(in oklab, var(--accent), transparent 50%)',
-        background: drag
-          ? 'color-mix(in oklab, var(--accent-soft), white 30%)'
-          : 'color-mix(in oklab, var(--accent-soft), white 50%)',
+        background: drag ? 'var(--dropzone-bg-active)' : 'var(--dropzone-bg)',
         transition: 'border-color .15s, background .15s',
         cursor: busy ? 'default' : 'pointer',
       }}

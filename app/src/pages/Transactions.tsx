@@ -325,7 +325,7 @@ export function TransactionsPage() {
       <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
           <table className="data" style={{ tableLayout: 'fixed' }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: 'oklch(98.5% 0.003 260)', boxShadow: '0 1px 0 var(--line)' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--thead-sticky-bg)', boxShadow: '0 1px 0 var(--line)' }}>
               <tr>
                 <th style={{ width: 80 }}>Date</th>
                 <th style={{ width: 52 }}>Bank</th>
@@ -663,11 +663,11 @@ function TxRow({
       {menuOpen && menuPos && createPortal(
         <div
           ref={dropdownRef}
-          style={{ position: 'fixed', right: menuPos.right, top: menuPos.top, zIndex: 9999, background: 'color-mix(in oklab, white 85%, transparent)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 140, display: 'flex', flexDirection: 'column', gap: 2 }}
+          style={{ position: 'fixed', right: menuPos.right, top: menuPos.top, zIndex: 9999, background: 'var(--popover-bg)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 140, display: 'flex', flexDirection: 'column', gap: 2 }}
         >
           {menuItems.map(item => (
             <button key={item.label} onClick={item.action} style={{ textAlign: 'left', padding: '6px 10px', borderRadius: 7, border: 'none', background: 'transparent', fontSize: 12, color: item.danger ? 'var(--danger)' : 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in oklab, white 60%, transparent)')}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--popover-hover-bg)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
               {item.label}
             </button>
@@ -678,7 +678,7 @@ function TxRow({
       {modifyOpen && modifyPos && createPortal(
         <div
           ref={modifyDropdownRef}
-          style={{ position: 'fixed', right: modifyPos.right, top: modifyPos.top, zIndex: 9999, background: 'color-mix(in oklab, white 85%, transparent)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 150, display: 'flex', flexDirection: 'column', gap: 2 }}
+          style={{ position: 'fixed', right: modifyPos.right, top: modifyPos.top, zIndex: 9999, background: 'var(--popover-bg)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--glass-border)', borderRadius: 10, boxShadow: 'var(--shadow-md)', padding: 6, minWidth: 150, display: 'flex', flexDirection: 'column', gap: 2 }}
         >
           {[
             { label: tx.split ? 'Edit split' : 'Split', icon: 'split', action: () => { onSplit(); setModifyOpen(false); } },
@@ -686,7 +686,7 @@ function TxRow({
             ...(tx.type === 'spend' && !isOwed ? [{ label: 'Mark as owed', icon: 'owed', action: () => { onMarkOwed(); setModifyOpen(false); } }] : []),
           ].map(item => (
             <button key={item.label} onClick={item.action} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', padding: '6px 10px', borderRadius: 7, border: 'none', background: 'transparent', fontSize: 12, color: 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in oklab, white 60%, transparent)')}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--popover-hover-bg)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
               <Icon name={item.icon} size={13} />
               {item.label}
@@ -797,7 +797,7 @@ function AddTxModal({ categories, people, onClose }: { categories: Category[]; p
 
   const F: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 };
   const L: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--ink-mute)', textTransform: 'uppercase', letterSpacing: '0.08em' };
-  const sel: React.CSSProperties = { width: '100%', padding: '7px 11px', borderRadius: 10, border: '1px solid var(--line-strong)', background: 'color-mix(in oklab, white 60%, transparent)', fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--sans)' };
+  const sel: React.CSSProperties = { width: '100%', padding: '7px 11px', borderRadius: 10, border: '1px solid var(--line-strong)', background: 'var(--native-select-bg)', fontSize: 13, color: 'var(--ink)', fontFamily: 'var(--sans)' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(10,12,18,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>

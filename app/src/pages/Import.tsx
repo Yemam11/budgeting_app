@@ -134,7 +134,7 @@ export function ImportPage() {
                 { label: 'Duplicates', value: p.duplicates },
                 { label: 'Warnings', value: p.warnings.length },
               ].map(s => (
-                <div key={s.label} style={{ padding: '10px 14px', borderRadius: 10, background: 'color-mix(in oklab, white 60%, transparent)', border: '1px solid var(--line)' }}>
+                <div key={s.label} style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--card-surface-2)', border: '1px solid var(--line)' }}>
                   <div className="eyebrow" style={{ marginBottom: 4 }}>{s.label}</div>
                   <div className="mono" style={{ fontSize: 22, fontWeight: 500 }}>{s.value}</div>
                 </div>
@@ -148,7 +148,7 @@ export function ImportPage() {
                   {p.duplicates} duplicate{p.duplicates !== 1 ? 's' : ''} skipped — click to review
                   {checkedCount > 0 && <span style={{ marginLeft: 8, color: 'var(--accent-ink)' }}>({checkedCount} selected to force-import)</span>}
                 </summary>
-                <div style={{ marginTop: 8, padding: '10px 12px', background: 'color-mix(in oklab, white 50%, transparent)', borderRadius: 10, border: '1px solid var(--line)' }}>
+                <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--card-surface)', borderRadius: 10, border: '1px solid var(--line)' }}>
                   <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginBottom: 10 }}>
                     These transactions match existing entries (same bank, date, amount, and description). Check any you want to import anyway — useful when the same amount appears twice legitimately.
                   </div>

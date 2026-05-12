@@ -136,7 +136,7 @@ export function OutstandingPage() {
 
       {/* Match notice */}
       {totalMatchCount > 0 && (
-        <div style={{ padding: '10px 16px', borderRadius: 10, background: 'color-mix(in oklab, oklch(95% 0.08 75), white 40%)', border: '1px solid oklch(80% 0.12 75 / 0.5)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ padding: '10px 16px', borderRadius: 10, background: 'var(--warn-banner-bg)', border: '1px solid oklch(80% 0.12 75 / 0.4)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Icon name="sparkle" size={14} />
           <span>
             {totalMatchCount} {totalMatchCount === 1 ? 'amount has' : 'amounts have'} a possible repayment —
@@ -165,7 +165,7 @@ export function OutstandingPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '14px 20px', borderBottom: '1px solid var(--line)',
-              background: `oklch(97% 0.01 ${hue})`,
+              background: `oklch(var(--contact-hue-l) 0.01 ${hue})`,
             }}>
               <div style={{
                 width: 34, height: 34, borderRadius: '50%',
@@ -211,7 +211,7 @@ export function OutstandingPage() {
                     <Fragment key={e.id}>
                       <tr
                         onClick={() => setExpandedId(isExpanded ? null : e.id)}
-                        style={{ cursor: 'pointer', background: isExpanded ? 'color-mix(in oklab, var(--accent-soft), white 40%)' : undefined }}
+                        style={{ cursor: 'pointer', background: isExpanded ? 'var(--row-selected-bg)' : undefined }}
                       >
                         <td style={{ fontWeight: 500 }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -260,7 +260,7 @@ export function OutstandingPage() {
 
                       {isExpanded && (
                         <tr>
-                          <td colSpan={4} style={{ padding: 0, background: 'color-mix(in oklab, var(--accent-soft), white 55%)', borderBottom: '1px solid var(--line)' }}>
+                          <td colSpan={4} style={{ padding: 0, background: 'var(--expanded-row-bg)', borderBottom: '1px solid var(--line)' }}>
                             <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
                               {/* Origin transaction */}
@@ -269,7 +269,7 @@ export function OutstandingPage() {
                                   Origin transaction
                                 </div>
                                 {src ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'white', borderRadius: 8, border: '1px solid var(--line)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--origin-tx-bg)', borderRadius: 8, border: '1px solid var(--line)' }}>
                                     <span style={{ color: 'var(--ink-mute)', display: 'flex' }}><Icon name="arrow_down_right" size={14} /></span>
                                     <div style={{ flex: 1 }}>
                                       <div style={{ fontWeight: 500, fontSize: 13 }}>{src.merchantRaw}</div>
@@ -300,7 +300,7 @@ export function OutstandingPage() {
                                       return (
                                         <div
                                           key={m.tx.id}
-                                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'color-mix(in oklab, oklch(95% 0.06 75), white 40%)', borderRadius: 8, border: '1px solid oklch(80% 0.1 75 / 0.4)' }}
+                                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--warn-suggestion-bg)', borderRadius: 8, border: '1px solid oklch(80% 0.1 75 / 0.35)' }}
                                         >
                                           <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.tx.merchantRaw}</div>
@@ -330,7 +330,7 @@ export function OutstandingPage() {
                                     {splits.map(m => (
                                       <div
                                         key={`split-${m.tx.id}`}
-                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'color-mix(in oklab, oklch(95% 0.05 260), white 50%)', borderRadius: 8, border: '1px solid oklch(75% 0.08 260 / 0.4)' }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--split-suggestion-bg)', borderRadius: 8, border: '1px solid oklch(75% 0.08 260 / 0.35)' }}
                                       >
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                           <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.tx.merchantRaw}</div>
