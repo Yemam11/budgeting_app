@@ -249,7 +249,7 @@ export function DashboardPage({ onNavigate, userName }: Props) {
               </div>
               <div>
                 <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'oklch(70% 0.03 260)', marginBottom: 4 }}>Money out</div>
-                <div className="mono" style={{ fontSize: 18, fontWeight: 500, color: 'oklch(95% 0.01 260)' }}>−{fmtCAD(spend)}</div>
+                <div className="mono" style={{ fontSize: 18, fontWeight: 500, color: 'oklch(95% 0.01 260)' }}>−{fmtCAD(Math.abs(spend))}</div>
                 {!hasCustomRange && <Delta value={spendDelta} />}
               </div>
             </div>
@@ -295,7 +295,7 @@ export function DashboardPage({ onNavigate, userName }: Props) {
                 <Donut data={donutData} size={190} thickness={20} />
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 4 }}>Spent</div>
-                  <div className="mono" style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em' }}>{fmtCompact(spend)}</div>
+                  <div className="mono" style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em' }}>{fmtCompact(Math.abs(spend))}</div>
                 </div>
               </div>
               <div style={{ flex: 1, minWidth: 0, maxWidth: 220, display: 'flex', flexDirection: 'column', gap: 7 }}>
