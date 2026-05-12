@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import { fmtCAD } from '../lib/money';
-import { Icon } from '../components/Primitives';
-import type { Envelope, Transaction } from '../types';
+import { Icon, CatSwatch } from '../components/Primitives';
+import type { Category, Envelope, Transaction } from '../types';
 
 const PALETTE = [
   'oklch(62% 0.18 25)',
@@ -217,22 +217,103 @@ function AddTransactionsDialog({
   );
 }
 
+// ---- KPI helpers ----
+
+interface KPI {
+  id: string;
+  name: string;
+  color: string;
+  amount: number;
+  count: number;
+  pct: number;
+}
+
+function computeDateRange(txs: Transaction[]): string {
+  if (!txs.length) return '';
+  const dates = txs.map(t => t.date).sort();
+  const fmt = (s: string) => new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const from = dates[0];
+  const to = dates[dates.length - 1];
+  return from === to ? fmt(from) : `${fmt(from)} – ${fmt(to)}`;
+}
+
+function KpiCard({ kpi, rank }: { kpi: KPI; rank: number }) {
+  const isTop = rank === 0;
+  return (
+    <div style={{
+      position: 'relative',
+      padding: '20px 22px',
+      borderRadius: 18,
+      background: isTop
+        ? `linear-gradient(135deg, color-mix(in oklab, ${kpi.color}, white 72%), color-mix(in oklab, ${kpi.color}, white 85%))`
+        : 'var(--glass-bg)',
+      backdropFilter: 'blur(18px) saturate(140%)',
+      WebkitBackdropFilter: 'blur(18px) saturate(140%)',
+      border: `1px solid ${isTop ? `color-mix(in oklab, ${kpi.color}, transparent 55%)` : 'var(--glass-border)'}`,
+      boxShadow: isTop
+        ? `var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.7), 0 0 0 1px color-mix(in oklab, ${kpi.color}, transparent 70%)`
+        : 'var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.6)',
+      overflow: 'hidden',
+    }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: kpi.color, borderRadius: '18px 18px 0 0' }} />
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: `color-mix(in oklab, ${kpi.color}, transparent 72%)`, border: `1px solid color-mix(in oklab, ${kpi.color}, transparent 55%)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CatSwatch color={kpi.color} size={9} />
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)' }}>{kpi.name}</div>
+        </div>
+        <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', background: 'color-mix(in oklab, white 60%, transparent)', padding: '2px 7px', borderRadius: 999, border: '1px solid var(--line)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {kpi.count} txn{kpi.count !== 1 ? 's' : ''}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div className="mono" style={{ fontSize: 30, fontWeight: 500, letterSpacing: '-0.025em', lineHeight: 1, color: 'var(--ink)' }}>
+          {fmtCAD(kpi.amount)}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+          <span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>Share of total</span>
+          <span className="mono" style={{ fontSize: 12, fontWeight: 500, color: `color-mix(in oklab, ${kpi.color}, black 15%)` }}>{kpi.pct.toFixed(1)}%</span>
+        </div>
+        <div style={{ height: 5, borderRadius: 999, background: 'color-mix(in oklab, var(--ink), transparent 91%)', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${kpi.pct}%`, background: kpi.color, borderRadius: 999 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Envelope Detail View ----
 
 function EnvelopeDetail({
   envelope,
   allTxs,
+  categories,
   onBack,
   onEdit,
   onDelete,
 }: {
   envelope: Envelope;
   allTxs: Transaction[];
+  categories: Category[];
   onBack: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteValue, setNoteValue] = useState('');
+  const deletingNoteRef = useRef(false);
+
+  const outstandingEntries = useQuery(() => db.outstanding.where('status').notEqual('settled').toArray(), []) ?? [];
+  const owedTxIds = useMemo(() => new Set(outstandingEntries.map(e => e.transactionId)), [outstandingEntries]);
+
+  const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
 
   const txs = useMemo(() =>
     allTxs
@@ -243,43 +324,56 @@ function EnvelopeDetail({
 
   const total = txs.reduce((s, t) => s + Math.abs(t.amount), 0);
 
+  const kpis = useMemo<KPI[]>(() => {
+    const map = new Map<string, { amount: number; count: number; name: string; color: string }>();
+    for (const t of txs) {
+      const key = t.categoryId ?? '__uncategorized__';
+      const cat = t.categoryId ? catMap.get(t.categoryId) : undefined;
+      if (!map.has(key)) {
+        map.set(key, { amount: 0, count: 0, name: cat?.name ?? 'Uncategorized', color: cat?.color ?? 'oklch(65% 0.02 260)' });
+      }
+      const entry = map.get(key)!;
+      entry.amount += Math.abs(t.amount);
+      entry.count += 1;
+    }
+    const denom = total || 1;
+    return [...map.entries()]
+      .map(([id, v]) => ({ id, ...v, pct: (v.amount / denom) * 100 }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [txs, catMap, total]);
+
+  const dateRange = computeDateRange(txs);
+  const cols = kpis.length <= 3 ? Math.max(kpis.length, 1) : kpis.length === 4 ? 4 : kpis.length <= 6 ? 3 : 4;
+
   async function remove(txId: string) {
     await db.transactions.update(txId, { envelopeId: null });
   }
 
+  async function handleCategoryChange(txId: string, catId: string | null) {
+    await db.transactions.update(txId, { categoryId: catId });
+  }
+
+  async function handleSaveNote(txId: string, note: string) {
+    await db.transactions.update(txId, { notes: note.trim() || undefined });
+    setEditingNoteId(null);
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '6px 10px' }}>
-          <span style={{ display: 'flex', transform: 'rotate(180deg)' }}><Icon name="chevron_right" size={14} /></span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '6px 10px', fontSize: 12 }}>
+          <span style={{ display: 'flex', transform: 'rotate(180deg)' }}><Icon name="chevron_right" size={12} /></span>
           Back
         </button>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 12, background: envelope.color, flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: `0 2px 8px ${envelope.color}55`, color: 'white',
-          }}>
-            <Icon name="envelope" size={20} stroke={1.8} />
-          </div>
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>{envelope.name}</div>
-            {envelope.description && (
-              <div style={{ fontSize: 13, color: 'var(--ink-mute)', marginTop: 2 }}>{envelope.description}</div>
-            )}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 6 }}>
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={onEdit}>
             <Icon name="edit" size={13} />Edit
           </button>
           <button
-            className="btn btn-ghost"
-            style={{ fontSize: 12, color: 'var(--danger)', borderColor: 'color-mix(in oklab, var(--danger), transparent 70%)' }}
+            className="btn"
+            style={{ background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid color-mix(in oklab, var(--danger), transparent 70%)', borderRadius: 10, padding: '7px 12px', fontSize: 13, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             onClick={onDelete}
           >
             <Icon name="trash" size={13} />Delete
@@ -287,21 +381,57 @@ function EnvelopeDetail({
         </div>
       </div>
 
-      {/* Summary */}
-      <div className="glass" style={{ padding: 20, display: 'flex', gap: 32, alignItems: 'baseline' }}>
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Total</div>
-          <div className="mono" style={{ fontSize: 32, fontWeight: 500, letterSpacing: '-0.02em' }}>{fmtCAD(total)}</div>
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--ink-mute)' }}>
-          {txs.length} {txs.length === 1 ? 'transaction' : 'transactions'}
+      {/* Hero band */}
+      <div style={{
+        position: 'relative',
+        background: 'linear-gradient(135deg, oklch(20% 0.015 260), oklch(15% 0.02 260))',
+        borderRadius: 22, padding: '24px 28px', color: 'white', overflow: 'hidden',
+        boxShadow: '0 20px 40px -20px oklch(15% 0.05 260 / 0.5), inset 0 1px 0 oklch(100% 0 0 / 0.08)',
+        border: '1px solid oklch(30% 0.02 260)',
+      }}>
+        <div className="hero-pattern" />
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 15, background: envelope.color,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25)', border: '1px solid rgba(255,255,255,0.15)',
+            color: 'white',
+          }}>
+            <Icon name="envelope" size={22} stroke={1.8} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{envelope.name}</div>
+            <div style={{ fontSize: 13, color: 'oklch(72% 0.02 260)', marginTop: 4 }}>
+              {[envelope.description, dateRange].filter(Boolean).join(' · ')}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'oklch(65% 0.02 260)', marginBottom: 6, fontWeight: 500 }}>Total</div>
+            <div className="mono" style={{ fontSize: 38, fontWeight: 500, letterSpacing: '-0.03em', lineHeight: 1 }}>{fmtCAD(total)}</div>
+            <div style={{ fontSize: 12, color: 'oklch(65% 0.02 260)', marginTop: 5 }}>
+              {txs.length} transaction{txs.length !== 1 ? 's' : ''} · {kpis.length} categor{kpis.length !== 1 ? 'ies' : 'y'}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Transactions */}
+      {/* KPI grid */}
+      {kpis.length > 0 && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>Breakdown by category</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-mute)' }}>{kpis.length} {kpis.length === 1 ? 'category' : 'categories'}</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 12 }}>
+            {kpis.map((kpi, i) => <KpiCard key={kpi.id} kpi={kpi} rank={i} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Transactions table */}
       <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Transactions</div>
+        <div style={{ padding: '16px 20px 14px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 500, fontSize: 14 }}>Transactions</div>
           <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={() => setShowAdd(true)}>
             <Icon name="plus" size={13} />Add transactions
           </button>
@@ -316,29 +446,123 @@ function EnvelopeDetail({
             <thead>
               <tr>
                 <th>Merchant</th>
+                <th style={{ width: 160 }}>Category</th>
                 <th style={{ width: 110 }}>Date</th>
                 <th style={{ width: 120, textAlign: 'right' }}>Amount</th>
-                <th style={{ width: 60 }}></th>
+                <th style={{ width: 50 }}></th>
               </tr>
             </thead>
             <tbody>
-              {txs.map(t => (
-                <tr key={t.id}>
-                  <td style={{ fontWeight: 500 }}>{t.merchantRaw}</td>
-                  <td className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>{t.date}</td>
-                  <td className="mono" style={{ textAlign: 'right', fontWeight: 500 }}>{fmtCAD(Math.abs(t.amount))}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button
-                      className="btn btn-ghost"
-                      style={{ fontSize: 11, padding: '3px 8px', color: 'var(--ink-mute)' }}
-                      onClick={() => remove(t.id)}
-                      title="Remove from envelope"
-                    >
-                      <Icon name="x" size={11} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {txs.map(t => {
+                const cat = t.categoryId ? catMap.get(t.categoryId) : undefined;
+                const isIncome = t.amount < 0;
+                const isEditingNote = editingNoteId === t.id;
+                return (
+                  <tr key={t.id}>
+                    <td style={{ fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span>{t.merchantRaw}</span>
+                        {owedTxIds.has(t.id) && <span className="chip chip-accent" style={{ fontSize: 10, padding: '1px 6px' }}>Owed</span>}
+                      </div>
+                      {t.split && (
+                        <div style={{ fontSize: 11, color: 'oklch(58% 0.1 75)', marginTop: 3, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Icon name="split" size={10} />Split {t.split.people} ways · {fmtCAD(t.split.myShare)} mine
+                        </div>
+                      )}
+                      {t.spreadMonths && t.spreadMonths > 1 && (
+                        <div style={{ fontSize: 11, color: 'oklch(55% 0.12 220)', marginTop: 3, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Icon name="calendar" size={10} />Spread {t.spreadMonths} months · {fmtCAD(Math.abs(t.amount) / t.spreadMonths)}/mo
+                        </div>
+                      )}
+                      {isEditingNote ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                          <input
+                            value={noteValue}
+                            onChange={e => setNoteValue(e.target.value)}
+                            onBlur={() => {
+                              if (deletingNoteRef.current) { deletingNoteRef.current = false; return; }
+                              handleSaveNote(t.id, noteValue);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSaveNote(t.id, noteValue);
+                              if (e.key === 'Escape') { setEditingNoteId(null); setNoteValue(''); }
+                            }}
+                            placeholder="Add a note…"
+                            autoFocus
+                            className="input"
+                            style={{ fontSize: 11, padding: '3px 8px', flex: 1, maxWidth: 240 }}
+                          />
+                          {t.notes && (
+                            <button
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, padding: '2px 7px', borderRadius: 5, border: 'none', background: 'oklch(50% 0.01 260 / 0.07)', color: 'var(--danger)', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+                              onMouseDown={() => { deletingNoteRef.current = true; }}
+                              onClick={() => { setEditingNoteId(null); setNoteValue(''); handleSaveNote(t.id, ''); }}
+                            >
+                              <Icon name="x" size={9} />Delete
+                            </button>
+                          )}
+                        </div>
+                      ) : t.notes ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <div
+                            style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic', cursor: 'pointer' }}
+                            onClick={() => { setEditingNoteId(t.id); setNoteValue(t.notes ?? ''); }}
+                          >
+                            "{t.notes}"
+                          </div>
+                          <button
+                            style={{ display: 'inline-flex', alignItems: 'center', fontSize: 10, padding: '1px 4px', borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', opacity: 0.6 }}
+                            onClick={() => handleSaveNote(t.id, '')}
+                          >
+                            <Icon name="x" size={9} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div
+                          style={{ fontSize: 11, color: 'var(--ink-mute)', cursor: 'pointer', marginTop: 2, opacity: 0 }}
+                          className="note-add-hint"
+                          onClick={() => { setEditingNoteId(t.id); setNoteValue(''); }}
+                        >
+                          + note
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {t.type === 'spend' || t.type === 'income' ? (
+                        <div style={{ position: 'relative', display: 'inline-flex' }}>
+                          <span className="chip" style={cat ? { background: `color-mix(in oklab, ${cat.color}, transparent 86%)`, borderColor: `color-mix(in oklab, ${cat.color}, transparent 70%)`, color: `color-mix(in oklab, ${cat.color}, black 20%)` } : { color: 'var(--ink-mute)' }}>
+                            {cat && <CatSwatch color={cat.color} size={6} />}
+                            {cat?.name ?? 'Uncategorized'}
+                            <Icon name="chevron_down" size={10} />
+                          </span>
+                          <select
+                            value={t.categoryId ?? ''}
+                            onChange={e => handleCategoryChange(t.id, e.target.value || null)}
+                            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
+                          >
+                            <option value="">Uncategorized</option>
+                            {categories.filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                      ) : <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>}
+                    </td>
+                    <td className="mono" style={{ fontSize: 12, color: 'var(--ink-mute)' }}>{t.date}</td>
+                    <td className="mono" style={{ textAlign: 'right', fontWeight: 500, color: isIncome ? 'oklch(50% 0.15 160)' : 'var(--ink)' }}>
+                      {isIncome ? '+' : ''}{fmtCAD(Math.abs(t.amount))}
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ padding: '4px 8px', border: 'none', background: 'transparent', color: 'var(--ink-mute)' }}
+                        onClick={() => remove(t.id)}
+                        title="Remove from envelope"
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -360,6 +584,7 @@ function EnvelopeDetail({
 export function EnvelopesPage() {
   const envelopes = useQuery(() => db.envelopes.orderBy('createdAt').reverse().toArray(), []) ?? [];
   const allTxs = useQuery(() => db.transactions.toArray(), []) ?? [];
+  const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -405,6 +630,7 @@ export function EnvelopesPage() {
         <EnvelopeDetail
           envelope={selectedEnvelope}
           allTxs={allTxs}
+          categories={categories}
           onBack={() => setSelectedId(null)}
           onEdit={() => setEditingEnvelope(selectedEnvelope)}
           onDelete={() => deleteEnvelope(selectedEnvelope)}
