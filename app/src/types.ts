@@ -114,6 +114,8 @@ export interface SavingsGoal {
   target: number;
   pct: number;
   color: string;
+  locked?: boolean;
+  lockedValue?: number;
 }
 
 export interface InvestmentAccount {

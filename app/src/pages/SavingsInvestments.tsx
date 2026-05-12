@@ -28,34 +28,43 @@ const GOAL_EXTRA_COLORS = [
 ];
 
 // ── PartitionSlider ──────────────────────────────────────────────
+// Shows only ACTIVE (unlocked) goals — always fills 100% of bar.
+// `balance` = freeBalance from parent; when 0, shows % instead of dollars.
 function PartitionSlider({ goals, balance, onGoalsChange }: {
   goals: SavingsGoal[];
   balance: number;
   onGoalsChange: (gs: SavingsGoal[]) => void;
 }) {
-  const barRef = useRef<HTMLDivElement>(null);
-  const [dragging, setDragging] = useState<number | null>(null);
+  const barRef   = useRef<HTMLDivElement>(null);
   const goalsRef = useRef(goals);
-  const cbRef = useRef(onGoalsChange);
+  const cbRef    = useRef(onGoalsChange);
   goalsRef.current = goals;
-  cbRef.current = onGoalsChange;
+  cbRef.current    = onGoalsChange;
+
+  const [dragging, setDragging] = useState<number | null>(null);
+
+  const active    = goals.filter(g => !g.locked);
+  const pctSum    = active.reduce((s, g) => s + g.pct, 0);
+  const remainder = Math.max(0, 100 - pctSum);
 
   useEffect(() => {
     if (dragging === null) return;
     const onMove = (e: MouseEvent) => {
       const bar = barRef.current;
       if (!bar) return;
-      const rect = bar.getBoundingClientRect();
+      const rect   = bar.getBoundingClientRect();
       const rawPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-      const gs = goalsRef.current;
-      const upd = [...gs];
-      const leftCum  = upd.slice(0, dragging).reduce((s, g) => s + g.pct, 0);
-      const rightCum = leftCum + upd[dragging].pct + upd[dragging + 1].pct;
-      const MIN = 5;
-      const clamped = Math.max(leftCum + MIN, Math.min(rightCum - MIN, rawPct));
-      upd[dragging]     = { ...upd[dragging],     pct: clamped - leftCum   };
-      upd[dragging + 1] = { ...upd[dragging + 1], pct: rightCum - clamped };
-      cbRef.current(upd);
+      const gs     = goalsRef.current;
+      const ul     = gs.filter(g => !g.locked);
+      if (dragging >= ul.length - 1) return;
+      const leftCum  = ul.slice(0, dragging).reduce((s, g) => s + g.pct, 0);
+      const rightCum = leftCum + ul[dragging].pct + ul[dragging + 1].pct;
+      const clamped  = Math.max(leftCum, Math.min(rightCum, rawPct));
+      cbRef.current(gs.map(g => {
+        if (g.id === ul[dragging].id)     return { ...g, pct: clamped - leftCum };
+        if (g.id === ul[dragging + 1].id) return { ...g, pct: rightCum - clamped };
+        return g;
+      }));
     };
     const onUp = () => setDragging(null);
     window.addEventListener('mousemove', onMove);
@@ -65,6 +74,8 @@ function PartitionSlider({ goals, balance, onGoalsChange }: {
       window.removeEventListener('mouseup',   onUp);
     };
   }, [dragging]);
+
+  if (active.length === 0) return null;
 
   return (
     <div ref={barRef} style={{
@@ -76,9 +87,8 @@ function PartitionSlider({ goals, balance, onGoalsChange }: {
       border: '1px solid rgba(255,255,255,0.78)',
       boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95), 0 2px 20px rgba(0,0,0,0.04)',
     }}>
-      {/* Segments */}
       <div style={{ position: 'absolute', inset: 0, borderRadius: 'inherit', overflow: 'hidden', display: 'flex' }}>
-        {goals.map(g => (
+        {active.map(g => (
           <div key={g.id} style={{
             width: g.pct + '%', height: '100%', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
@@ -87,25 +97,46 @@ function PartitionSlider({ goals, balance, onGoalsChange }: {
             opacity: 0.55,
             borderRight: '1px solid rgba(255,255,255,0.38)',
           }}>
-            {g.pct > 10 && (
-              <div style={{ textAlign: 'center', padding: '0 10px', pointerEvents: 'none', userSelect: 'none',
-                color: `color-mix(in oklab, ${g.color}, black 42%)` }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                  {g.name.split(' ')[0]}
+            {g.pct > 8 && (
+              <div style={{ textAlign: 'center', padding: '0 8px', pointerEvents: 'none', userSelect: 'none',
+                color: `color-mix(in oklab, ${g.color}, black 42%)`, minWidth: 0, overflow: 'hidden' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {g.name}
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--mono)', letterSpacing: '-0.02em' }}>
-                  {fmtCompact((g.pct / 100) * balance)}
+                  {balance > 0 ? fmtCompact((g.pct / 100) * balance) : `${Math.round(g.pct)}%`}
                 </div>
               </div>
             )}
           </div>
         ))}
+        {remainder > 0.5 && (
+          <div style={{
+            width: remainder + '%', height: '100%', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+            transition: dragging !== null ? 'none' : 'width 0.22s ease',
+            background: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.04) 0px, rgba(0,0,0,0.04) 4px, transparent 4px, transparent 8px)',
+            opacity: 0.7,
+          }}>
+            {remainder > 10 && (
+              <div style={{ textAlign: 'center', padding: '0 8px', pointerEvents: 'none', userSelect: 'none',
+                color: 'var(--ink-mute)', minWidth: 0, overflow: 'hidden' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  Unallocated
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--mono)', letterSpacing: '-0.02em' }}>
+                  {balance > 0 ? fmtCompact((remainder / 100) * balance) : `${Math.round(remainder)}%`}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Drag handles */}
-      {goals.slice(0, -1).map((_, i) => {
-        const left = goals.slice(0, i + 1).reduce((s, g) => s + g.pct, 0);
-        const handleColor = `color-mix(in oklab, ${goals[i].color} 50%, ${goals[i + 1].color} 50%)`;
+      {active.slice(0, -1).map((_, i) => {
+        const left = active.slice(0, i + 1).reduce((s, g) => s + g.pct, 0);
+        const handleColor = `color-mix(in oklab, ${active[i].color} 50%, ${active[i + 1].color} 50%)`;
         return (
           <div key={i}
             onMouseDown={e => { e.preventDefault(); setDragging(i); }}
@@ -127,15 +158,16 @@ function PartitionSlider({ goals, balance, onGoalsChange }: {
 }
 
 // ── GoalCard ─────────────────────────────────────────────────────
-function GoalCard({ goal, balance, onRename, onRetarget, onReallocate, onRemove }: {
+function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRemove, onToggleLock }: {
   goal: SavingsGoal;
-  balance: number;
+  freeBalance: number;
   onRename: (name: string) => void;
   onRetarget: (target: number) => void;
   onReallocate: (newAmount: number) => void;
   onRemove: () => void;
+  onToggleLock: () => void;
 }) {
-  const allocated = (goal.pct / 100) * balance;
+  const allocated = goal.locked ? (goal.lockedValue ?? 0) : Math.max(0, (goal.pct / 100) * freeBalance);
   const progress  = goal.target > 0 ? Math.min(1, allocated / goal.target) : 0;
   const [editName,    setEditName]    = useState(false);
   const [nameDraft,   setNameDraft]   = useState(goal.name);
@@ -145,7 +177,7 @@ function GoalCard({ goal, balance, onRename, onRetarget, onReallocate, onRemove 
   const [allocDraft,  setAllocDraft]  = useState('');
 
   return (
-    <div className="glass" style={{ flex: '1 1 160px', minWidth: 0, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="glass" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
@@ -165,7 +197,20 @@ function GoalCard({ goal, balance, onRename, onRetarget, onReallocate, onRemove 
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontFamily: 'var(--mono)' }}>{Math.round(goal.pct)}%</span>
+          {goal.locked
+            ? <span style={{ fontSize: 10, fontWeight: 600, color: goal.color,
+                background: `color-mix(in oklab, ${goal.color}, transparent 88%)`,
+                padding: '1px 5px', borderRadius: 4, letterSpacing: '0.04em' }}>LOCKED</span>
+            : <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontFamily: 'var(--mono)' }}>{Math.round(goal.pct)}%</span>
+          }
+          <button onClick={onToggleLock}
+            title={goal.locked ? 'Unlock — re-enter active savings pool' : 'Lock value at current amount'}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18,
+              borderRadius: 4, border: 'none', cursor: 'pointer',
+              background: goal.locked ? `color-mix(in oklab, ${goal.color}, transparent 78%)` : 'none',
+              color: goal.locked ? goal.color : 'var(--ink-mute)' }}>
+            <Icon name={goal.locked ? 'lock' : 'unlock'} size={11} />
+          </button>
           <button onClick={onRemove}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18,
               borderRadius: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)' }}>
@@ -196,9 +241,12 @@ function GoalCard({ goal, balance, onRename, onRetarget, onReallocate, onRemove 
               }} />
           </div>
         ) : (
-          <div title="Click to set amount" onClick={() => { setAllocDraft(allocated.toFixed(2)); setEditAlloc(true); }}
+          <div
+            title={goal.locked ? 'Unlock to edit allocation' : 'Click to set amount'}
+            onClick={() => { if (!goal.locked) { setAllocDraft(allocated.toFixed(2)); setEditAlloc(true); } }}
             style={{ fontSize: 24, fontWeight: 500, letterSpacing: '-0.025em', fontFamily: 'var(--mono)',
-              cursor: 'text', display: 'inline-block' }}>
+              cursor: goal.locked ? 'default' : 'text', display: 'inline-block',
+              opacity: goal.locked ? 0.75 : 1 }}>
             {fmtCAD(allocated)}
           </div>
         )}
@@ -542,6 +590,7 @@ export function SavingsInvestmentsPage() {
   const [savingsOverrideBase,  setSavingsOverrideBaseRaw]  = useState(0);
   const [flexBalance,          setFlexBalanceRaw]          = useState(0);
   const [ndOverrides,          setNdOverridesRaw]          = useState<Record<string, { value: number; base: number }>>({});
+  const [showFlex,             setShowFlexRaw]             = useState(true);
   const [settingsLoaded,       setSettingsLoaded]          = useState(false);
 
   useEffect(() => {
@@ -552,16 +601,23 @@ export function SavingsInvestmentsPage() {
       db.settings.get('si_savings_override_base'),
       db.settings.get('si_flex_balance'),
       db.settings.get('si_nd_overrides'),
-    ]).then(([g, a, so, sob, fb, ndo]) => {
+      db.settings.get('si_show_flex'),
+    ]).then(([g, a, so, sob, fb, ndo, sf]) => {
       if (g)  setGoalsRaw(g.value as SavingsGoal[]);
       if (a)  setAccountsRaw(a.value as InvestmentAccount[]);
       setSavingsOverrideRaw(so ? (so.value as number | null) : null);
       setSavingsOverrideBaseRaw(sob ? (sob.value as number) : 0);
       if (fb) setFlexBalanceRaw(fb.value as number ?? 0);
       if (ndo) setNdOverridesRaw(ndo.value as Record<string, { value: number; base: number }>);
+      if (sf) setShowFlexRaw(sf.value as boolean);
       setSettingsLoaded(true);
     });
   }, []);
+
+  function setShowFlex(next: boolean) {
+    setShowFlexRaw(next);
+    db.settings.put({ key: 'si_show_flex', value: next });
+  }
 
   function setGoals(next: SavingsGoal[]) {
     setGoalsRaw(next);
@@ -656,29 +712,75 @@ export function SavingsInvestmentsPage() {
     return Math.round(income - spend - savingsOut - investOut);
   }, [txs, currentMonth]);
 
+  // Derived: freeBalance = total balance minus all locked-goal values
+  const lockedTotal = goals.filter(g => g.locked).reduce((s, g) => s + (g.lockedValue ?? 0), 0);
+  const freeBalance = balance - lockedTotal;
+
   // Goal mutations
   const updateGoal = (id: string, patch: Partial<SavingsGoal>) =>
     setGoals(goals.map(g => g.id === id ? { ...g, ...patch } : g));
 
+  const toggleLock = (id: string) => {
+    const goal = goals.find(g => g.id === id);
+    if (!goal) return;
+
+    if (!goal.locked) {
+      // Lock: freeze current dollar value, remove pct from active pool
+      const frozenValue   = (goal.pct / 100) * freeBalance;
+      const otherUnlocked = goals.filter(g => g.id !== id && !g.locked);
+      const otherTotal    = otherUnlocked.reduce((s, g) => s + g.pct, 0);
+      const lostPct       = goal.pct;
+      setGoals(goals.map(g => {
+        if (g.id === id) return { ...g, locked: true, lockedValue: frozenValue, pct: 0 };
+        if (g.locked)    return g;
+        return { ...g, pct: g.pct + (otherTotal > 0 ? (g.pct / otherTotal) * lostPct : lostPct / Math.max(1, otherUnlocked.length)) };
+      }));
+    } else {
+      // Unlock: release value, give goal a fresh pct from the active pool
+      const otherUnlocked = goals.filter(g => g.id !== id && !g.locked);
+      const otherTotal    = otherUnlocked.reduce((s, g) => s + g.pct, 0);
+      const newPct        = Math.min(20, Math.max(1, otherTotal * 0.2));
+      const scale         = otherTotal > 0 ? (otherTotal - newPct) / otherTotal : 1;
+      setGoals(goals.map(g => {
+        if (g.id === id) return { ...g, locked: false, lockedValue: undefined, pct: newPct };
+        if (g.locked)    return g;
+        return { ...g, pct: g.pct * scale };
+      }));
+    }
+  };
+
   const reallocateGoal = (id: string, newAmount: number) => {
-    if (balance <= 0) return;
-    const newPct = Math.min(95, Math.max(5, (newAmount / balance) * 100));
-    const others = goals.filter(g => g.id !== id);
-    const othersTotal = others.reduce((s, g) => s + g.pct, 0);
-    const remaining = 100 - newPct;
+    if (freeBalance <= 0) return;
+    const newPct        = Math.min(100, Math.max(0, (newAmount / freeBalance) * 100));
+    const otherUnlocked = goals.filter(g => g.id !== id && !g.locked);
+    const otherTotal    = otherUnlocked.reduce((s, g) => s + g.pct, 0);
+    const remaining     = Math.max(0, 100 - newPct);
     setGoals(goals.map(g =>
       g.id === id
         ? { ...g, pct: newPct }
-        : { ...g, pct: othersTotal > 0 ? (g.pct / othersTotal) * remaining : remaining / others.length }
+        : g.locked
+          ? g
+          : { ...g, pct: otherTotal > 0 ? (g.pct / otherTotal) * remaining : remaining / Math.max(1, otherUnlocked.length) }
     ));
   };
 
   const removeGoal = (id: string) => {
+    const goal = goals.find(g => g.id === id);
+    if (!goal) return;
     const kept = goals.filter(g => g.id !== id);
     if (!kept.length) return;
-    const lost  = goals.find(g => g.id === id)!.pct;
-    const total = kept.reduce((s, g) => s + g.pct, 0);
-    setGoals(kept.map(g => ({ ...g, pct: g.pct + (g.pct / total) * lost })));
+    if (goal.locked) {
+      setGoals(kept);
+      return;
+    }
+    const unlocked      = kept.filter(g => !g.locked);
+    const unlockedTotal = unlocked.reduce((s, g) => s + g.pct, 0);
+    const lostPct       = goal.pct;
+    setGoals(kept.map(g =>
+      g.locked
+        ? g
+        : { ...g, pct: g.pct + (unlockedTotal > 0 ? (g.pct / unlockedTotal) * lostPct : lostPct / Math.max(1, unlocked.length)) }
+    ));
   };
 
   const [showAddGoal,   setShowAddGoal]   = useState(false);
@@ -687,11 +789,12 @@ export function SavingsInvestmentsPage() {
 
   const addGoal = () => {
     if (!newGoalName.trim()) return;
-    const target  = parseFloat(newGoalTarget.replace(/\D/g, '')) || 10000;
-    const newPct  = 20;
-    const scale   = (100 - newPct) / 100;
-    const color   = GOAL_EXTRA_COLORS[goals.length % GOAL_EXTRA_COLORS.length];
-    const updated = goals.map(g => ({ ...g, pct: g.pct * scale }));
+    const target        = parseFloat(newGoalTarget.replace(/\D/g, '')) || 10000;
+    const color         = GOAL_EXTRA_COLORS[goals.length % GOAL_EXTRA_COLORS.length];
+    const unlockedTotal = goals.filter(g => !g.locked).reduce((s, g) => s + g.pct, 0);
+    const newPct        = Math.min(20, Math.max(1, unlockedTotal * 0.2));
+    const scale         = unlockedTotal > 0 ? (unlockedTotal - newPct) / unlockedTotal : 1;
+    const updated       = goals.map(g => g.locked ? g : { ...g, pct: g.pct * scale });
     updated.push({ id: 'sg' + Date.now(), name: newGoalName.trim(), target, pct: newPct, color });
     setGoals(updated);
     setNewGoalName('');
@@ -736,14 +839,23 @@ export function SavingsInvestmentsPage() {
       {/* ── Page header ─────────────────────────────────────── */}
       <div>
         <div className="eyebrow" style={{ marginBottom: 6 }}>Wealth</div>
-        <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>Savings &amp; Investments</div>
-        <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4, maxWidth: 560 }}>
-          Current snapshot — partition your savings across goals · track investment accounts · surplus flows through the Flex buffer.
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>Savings &amp; Investments</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4, maxWidth: 560 }}>
+              Current snapshot — partition your savings across goals · track investment accounts · surplus flows through the Flex buffer.
+            </div>
+          </div>
+          <button className="btn btn-ghost" style={{ fontSize: 11, flexShrink: 0, marginTop: 4 }}
+            onClick={() => setShowFlex(!showFlex)}>
+            <Icon name={showFlex ? 'eye_off' : 'eye'} size={11} />
+            {showFlex ? 'Hide' : 'Show'} Flex Account
+          </button>
         </div>
       </div>
 
       {/* ── Flex Account ─────────────────────────────────────── */}
-      <FlexCard goals={goals} flexBalance={flexBalance} thisMoSurplus={thisMoSurplus} currentMonth={currentMonth} />
+      {showFlex && <FlexCard goals={goals} flexBalance={flexBalance} thisMoSurplus={thisMoSurplus} currentMonth={currentMonth} />}
 
       {/* ── SAVINGS section ──────────────────────────────────── */}
       <SIDivider icon="download" label="Savings" />
@@ -799,25 +911,73 @@ export function SavingsInvestmentsPage() {
           </div>
         </div>
 
-        {/* Slider + goal cards */}
-        {goals.length > 0 ? (
-          <>
-            <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 10 }}>
-              Drag handles to rebalance · click a name or target to edit
-            </div>
-            <PartitionSlider goals={goals} balance={balance} onGoalsChange={setGoals} />
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
-              {goals.map(g => (
-                <GoalCard key={g.id} goal={g} balance={balance}
-                  onRename={name     => updateGoal(g.id, { name })}
-                  onRetarget={target => updateGoal(g.id, { target })}
-                  onReallocate={amt  => reallocateGoal(g.id, amt)}
-                  onRemove={() => removeGoal(g.id)} />
-              ))}
-
-              {showAddGoal ? (
-                <div className="glass" style={{ flex: '1 1 160px', padding: 16, minWidth: 0,
-                  display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* Active goals — allocation plan for new savings */}
+        {(() => {
+          const activeGoals = goals.filter(g => !g.locked);
+          return activeGoals.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: freeBalance < 0 ? 'var(--danger)' : 'var(--ink-soft)' }}>
+                  {freeBalance > 0
+                    ? `Distributing ${fmtCAD(freeBalance)} · drag to rebalance`
+                    : freeBalance < 0
+                      ? `Locked goals exceed balance by ${fmtCAD(Math.abs(freeBalance))}`
+                      : 'Allocation plan — drag to set % for new savings'}
+                </div>
+                {freeBalance < 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--danger)', fontStyle: 'italic' }}>
+                    Save {fmtCAD(Math.abs(freeBalance))} more or unlock a goal
+                  </span>
+                )}
+                {freeBalance === 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic' }}>
+                    No free balance yet — percentages shown
+                  </span>
+                )}
+              </div>
+              <PartitionSlider goals={goals} balance={Math.max(0, freeBalance)} onGoalsChange={setGoals} />
+              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', marginTop: 16 }}>
+                {activeGoals.map(g => (
+                  <GoalCard key={g.id} goal={g} freeBalance={freeBalance}
+                    onRename={name     => updateGoal(g.id, { name })}
+                    onRetarget={target => updateGoal(g.id, { target })}
+                    onReallocate={amt  => reallocateGoal(g.id, amt)}
+                    onRemove={() => removeGoal(g.id)}
+                    onToggleLock={() => toggleLock(g.id)} />
+                ))}
+                {showAddGoal ? (
+                  <div className="glass" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontWeight: 500, fontSize: 13 }}>New goal</div>
+                    <input className="input" placeholder="Goal name" value={newGoalName}
+                      onChange={e => setNewGoalName(e.target.value)} style={{ fontSize: 12 }} autoFocus />
+                    <input className="input" placeholder="Target (e.g. 15000)" value={newGoalTarget}
+                      onChange={e => setNewGoalTarget(e.target.value)} style={{ fontSize: 12 }}
+                      onKeyDown={e => e.key === 'Enter' && addGoal()} />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={addGoal}>Add</button>
+                      <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => { setShowAddGoal(false); setNewGoalName(''); setNewGoalTarget(''); }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button className="btn btn-ghost"
+                    style={{ minHeight: 80, flexDirection: 'column', gap: 4,
+                      justifyContent: 'center', borderStyle: 'dashed', fontSize: 12, padding: '10px 18px' }}
+                    onClick={() => setShowAddGoal(true)}>
+                    <Icon name="plus" size={14} />Add goal
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--ink-mute)' }}>
+              <div style={{ fontSize: 13, marginBottom: 10 }}>
+                {goals.some(g => g.locked) ? 'All goals completed — add a new one to keep saving.' : 'No goals yet.'}
+              </div>
+              <button className="btn btn-primary" onClick={() => setShowAddGoal(true)}>
+                <Icon name="plus" size={12} />Add goal
+              </button>
+              {showAddGoal && (
+                <div className="glass" style={{ padding: 16, marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
                   <div style={{ fontWeight: 500, fontSize: 13 }}>New goal</div>
                   <input className="input" placeholder="Goal name" value={newGoalName}
                     onChange={e => setNewGoalName(e.target.value)} style={{ fontSize: 12 }} autoFocus />
@@ -829,25 +989,33 @@ export function SavingsInvestmentsPage() {
                     <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => { setShowAddGoal(false); setNewGoalName(''); setNewGoalTarget(''); }}>Cancel</button>
                   </div>
                 </div>
-              ) : (
-                <button className="btn btn-ghost"
-                  style={{ flex: '0 0 auto', minWidth: 100, minHeight: 80, flexDirection: 'column',
-                    gap: 4, justifyContent: 'center', borderStyle: 'dashed', fontSize: 12, padding: '10px 18px' }}
-                  onClick={() => setShowAddGoal(true)}>
-                  <Icon name="plus" size={14} />Add goal
-                </button>
               )}
             </div>
-          </>
-        ) : (
-          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--ink-mute)' }}>
-            <div style={{ fontSize: 13, marginBottom: 10 }}>No goals yet.</div>
-            <button className="btn btn-primary" onClick={() => setShowAddGoal(true)}>
-              <Icon name="plus" size={12} />Add your first goal
-            </button>
-          </div>
-        )}
+          );
+        })()}
       </div>
+
+      {/* Completed Goals — locked goals shown separately */}
+      {goals.some(g => g.locked) && (
+        <>
+          <SIDivider icon="check" label="Completed Goals" />
+          <div className="glass" style={{ padding: 20 }}>
+            <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 14 }}>
+              Value locked in · unlock to re-enter the active savings pool
+            </div>
+            <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))' }}>
+              {goals.filter(g => g.locked).map(g => (
+                <GoalCard key={g.id} goal={g} freeBalance={freeBalance}
+                  onRename={name     => updateGoal(g.id, { name })}
+                  onRetarget={target => updateGoal(g.id, { target })}
+                  onReallocate={amt  => reallocateGoal(g.id, amt)}
+                  onRemove={() => removeGoal(g.id)}
+                  onToggleLock={() => toggleLock(g.id)} />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Savings history table — all time */}
       <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
