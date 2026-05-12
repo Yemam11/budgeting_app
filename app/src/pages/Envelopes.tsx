@@ -245,7 +245,7 @@ function KpiCard({ kpi, rank }: { kpi: KPI; rank: number }) {
       padding: '20px 22px',
       borderRadius: 18,
       background: isTop
-        ? `linear-gradient(135deg, color-mix(in oklab, ${kpi.color}, white 72%), color-mix(in oklab, ${kpi.color}, white 85%))`
+        ? `linear-gradient(135deg, color-mix(in oklab, ${kpi.color}, var(--kpi-blend) 72%), color-mix(in oklab, ${kpi.color}, var(--kpi-blend) 85%))`
         : 'var(--glass-bg)',
       backdropFilter: 'blur(18px) saturate(140%)',
       WebkitBackdropFilter: 'blur(18px) saturate(140%)',
@@ -264,7 +264,7 @@ function KpiCard({ kpi, rank }: { kpi: KPI; rank: number }) {
           </div>
           <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-2)' }}>{kpi.name}</div>
         </div>
-        <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', background: 'color-mix(in oklab, white 60%, transparent)', padding: '2px 7px', borderRadius: 999, border: '1px solid var(--line)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+        <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', background: 'var(--card-surface-2)', padding: '2px 7px', borderRadius: 999, border: '1px solid var(--line)', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {kpi.count} txn{kpi.count !== 1 ? 's' : ''}
         </div>
       </div>
@@ -686,7 +686,7 @@ export function EnvelopesPage() {
                 key={env.id}
                 onClick={() => setSelectedId(env.id)}
                 style={{
-                  background: 'color-mix(in oklab, white 70%, transparent)',
+                  background: 'var(--card-surface)',
                   border: '1px solid var(--line)',
                   borderRadius: 14,
                   padding: 0,

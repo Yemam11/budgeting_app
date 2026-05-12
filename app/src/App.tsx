@@ -10,7 +10,7 @@ import { OutstandingPage } from './pages/Outstanding';
 import { ContactsPage } from './pages/Contacts';
 import { SettingsPage } from './pages/Settings';
 import { EnvelopesPage } from './pages/Envelopes';
-import { Icon } from './components/Primitives';
+import { Icon, Toggle } from './components/Primitives';
 
 type Tab = 'dashboard' | 'import' | 'transactions' | 'budgets' | 'envelopes' | 'outstanding' | 'contacts' | 'settings';
 
@@ -41,6 +41,17 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingName, setOnboardingName] = useState('');
   const onboardingInputRef = useRef<HTMLInputElement>(null);
+
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : '';
+    localStorage.setItem('theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   const outstandingCount = useQuery(
     () => db.outstanding.where('status').notEqual('settled').count(), []
@@ -94,7 +105,7 @@ export default function App() {
         padding: '20px 14px',
         display: 'flex', flexDirection: 'column', gap: 4,
         borderRight: '1px solid var(--line)',
-        background: 'color-mix(in oklab, white 45%, transparent)',
+        background: 'var(--sidebar-bg)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
       }}>
@@ -117,7 +128,7 @@ export default function App() {
             <Icon name="search" size={13} />
           </div>
           <input className="input" placeholder="Quick search…" style={{ width: '100%', paddingLeft: 30, fontSize: 12 }} readOnly />
-          <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', background: 'color-mix(in oklab, white 60%, transparent)', padding: '1px 5px', borderRadius: 4, border: '1px solid var(--line)' }}>⌘K</span>
+          <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', background: 'var(--card-surface-2)', padding: '1px 5px', borderRadius: 4, border: '1px solid var(--line)' }}>⌘K</span>
         </div>
 
         {/* Nav */}
@@ -142,8 +153,29 @@ export default function App() {
 
         <div style={{ flex: 1 }} />
 
+        {/* Dark mode toggle */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setDarkMode(d => !d)}
+          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setDarkMode(d => !d)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 12px', borderRadius: 10, marginBottom: 4,
+            fontSize: 13, fontWeight: 500, color: 'var(--ink-soft)',
+            cursor: 'pointer', userSelect: 'none',
+            transition: 'background .12s, color .12s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in oklab, var(--ink) 6%, transparent)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        >
+          <Icon name={darkMode ? 'moon' : 'sun'} size={15} />
+          <span style={{ flex: 1 }}>Appearance</span>
+          <Toggle on={darkMode} />
+        </div>
+
         {/* Account footer */}
-        <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--line)', background: 'color-mix(in oklab, white 60%, transparent)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ padding: 12, borderRadius: 12, border: '1px solid var(--line)', background: 'var(--account-footer-bg)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, oklch(70% 0.12 165), oklch(55% 0.16 255))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
             {userName ? getInitials(userName) : <Icon name="settings" size={14} />}
           </div>

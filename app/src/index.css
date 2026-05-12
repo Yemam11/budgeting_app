@@ -35,20 +35,115 @@
 
   --sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --sidebar-bg: color-mix(in oklab, white 45%, transparent);
+  --account-footer-bg: color-mix(in oklab, white 60%, transparent);
+  --card-surface: color-mix(in oklab, white 70%, transparent);
+  --card-surface-2: color-mix(in oklab, white 60%, transparent);
+  --thead-sticky-bg: oklch(98.5% 0.003 260);
+  --contact-hue-l: 97%;
+  --origin-tx-bg: white;
+  --expanded-row-bg: color-mix(in oklab, var(--accent-soft), white 55%);
+  --warn-banner-bg: color-mix(in oklab, oklch(95% 0.08 75), white 40%);
+  --warn-suggestion-bg: color-mix(in oklab, oklch(95% 0.06 75), white 40%);
+  --split-suggestion-bg: color-mix(in oklab, oklch(95% 0.05 260), white 50%);
+  --dropzone-bg: color-mix(in oklab, var(--accent-soft), white 50%);
+  --dropzone-bg-active: color-mix(in oklab, var(--accent-soft), white 30%);
+  --popover-bg: color-mix(in oklab, white 85%, transparent);
+  --popover-hover-bg: color-mix(in oklab, white 60%, transparent);
+  --row-selected-bg: color-mix(in oklab, var(--accent-soft), white 40%);
+  --kpi-blend: white;
+  --native-select-bg: color-mix(in oklab, white 60%, transparent);
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg: oklch(14% 0.012 260);
+  --bg-2: oklch(18% 0.015 260);
   --ink: oklch(96% 0.005 260);
   --ink-2: oklch(88% 0.008 260);
   --ink-soft: oklch(70% 0.01 260);
-  --ink-mute: oklch(55% 0.012 260);
+  --ink-mute: oklch(52% 0.012 260);
   --line: oklch(100% 0 0 / 0.08);
   --line-strong: oklch(100% 0 0 / 0.15);
   --glass-bg: color-mix(in oklab, oklch(30% 0.02 260) 50%, transparent);
   --glass-border: oklch(100% 0 0 / 0.1);
   --accent-soft: oklch(30% 0.08 165 / 0.3);
   --accent-ink: oklch(85% 0.12 165);
+  --sidebar-bg: color-mix(in oklab, oklch(20% 0.018 260) 80%, transparent);
+  --account-footer-bg: color-mix(in oklab, oklch(25% 0.015 260) 70%, transparent);
+  --card-surface: oklch(100% 0 0 / 0.06);
+  --card-surface-2: oklch(100% 0 0 / 0.08);
+  --thead-sticky-bg: oklch(16% 0.015 260);
+  --contact-hue-l: 22%;
+  --origin-tx-bg: oklch(22% 0.02 260);
+  --expanded-row-bg: color-mix(in oklab, var(--accent-soft), transparent 40%);
+  --warn-banner-bg: oklch(22% 0.06 75 / 0.5);
+  --warn-suggestion-bg: oklch(22% 0.05 75 / 0.5);
+  --split-suggestion-bg: oklch(22% 0.04 260 / 0.5);
+  --dropzone-bg: color-mix(in oklab, var(--accent-soft), transparent 30%);
+  --dropzone-bg-active: color-mix(in oklab, var(--accent-soft), transparent 10%);
+  --popover-bg: color-mix(in oklab, oklch(28% 0.02 260) 85%, transparent);
+  --popover-hover-bg: oklch(100% 0 0 / 0.08);
+  --row-selected-bg: color-mix(in oklab, var(--accent-soft), transparent 20%);
+  --kpi-blend: oklch(18% 0.015 260);
+  --native-select-bg: oklch(22% 0.02 260);
+}
+
+[data-theme="dark"] body::before {
+  background:
+    radial-gradient(900px 600px at 88% -10%, oklch(45% 0.14 165 / 0.25), transparent 60%),
+    radial-gradient(700px 500px at 105% 45%, oklch(40% 0.12 300 / 0.18), transparent 60%),
+    radial-gradient(600px 400px at -10% 90%, oklch(40% 0.1 220 / 0.15), transparent 60%);
+}
+
+[data-theme="dark"] .nav-item:hover {
+  background: oklch(100% 0 0 / 0.06);
+}
+[data-theme="dark"] .nav-item.active {
+  background: oklch(100% 0 0 / 0.1);
+  border-color: oklch(100% 0 0 / 0.1);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 oklch(100% 0 0 / 0.08);
+}
+
+[data-theme="dark"] .btn-ghost {
+  background: oklch(100% 0 0 / 0.06);
+  border-color: oklch(100% 0 0 / 0.12);
+}
+[data-theme="dark"] .btn-ghost:hover {
+  background: oklch(100% 0 0 / 0.1);
+}
+
+[data-theme="dark"] .input {
+  background: oklch(100% 0 0 / 0.05);
+  border-color: oklch(100% 0 0 / 0.12);
+}
+[data-theme="dark"] .input:hover {
+  background: oklch(100% 0 0 / 0.08);
+}
+[data-theme="dark"] .input:focus {
+  background: oklch(22% 0.02 260);
+}
+
+[data-theme="dark"] .glass {
+  box-shadow: var(--shadow-md), inset 0 1px 0 oklch(100% 0 0 / 0.08);
+}
+
+[data-theme="dark"] table.data thead th {
+  background: oklch(100% 0 0 / 0.04);
+}
+[data-theme="dark"] table.data tbody tr:hover td {
+  background: oklch(78% 0.16 165 / 0.08);
+}
+
+[data-theme="dark"] .seg-btn.active {
+  background: oklch(28% 0.02 260);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .chip {
+  background: oklch(100% 0 0 / 0.06);
+  border-color: oklch(100% 0 0 / 0.1);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
