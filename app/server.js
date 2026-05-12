@@ -13,6 +13,18 @@ sqldb.exec('PRAGMA journal_mode = WAL;');
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN spreadMonths INTEGER'); } catch {}
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN owner TEXT'); } catch {}
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN envelopeId TEXT'); } catch {}
+try { sqldb.exec('ALTER TABLE transactions ADD COLUMN investmentAccount TEXT'); } catch {}
+sqldb.exec(`CREATE TABLE IF NOT EXISTS custom_rules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  merchantContains TEXT,
+  amountOp TEXT,
+  amountValue REAL,
+  targetType TEXT,
+  targetCategoryId TEXT,
+  priority INTEGER DEFAULT 0,
+  createdAt INTEGER
+);`);
 
 sqldb.exec(`
   CREATE TABLE IF NOT EXISTS envelopes (
@@ -111,6 +123,7 @@ const TABLES = {
   people:              { sql: 'people',             pk: 'id' },
   'category-forwards': { sql: 'category_forwards',  pk: 'fromCategoryId' },
   envelopes:           { sql: 'envelopes',           pk: 'id' },
+  'custom-rules':      { sql: 'custom_rules',        pk: 'id' },
 };
 
 const QUOTED_COLS = new Set(['order']);

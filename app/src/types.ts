@@ -1,6 +1,6 @@
 export type Bank = 'amex' | 'bmo' | 'scotia' | 'simplii' | 'cibc';
 
-export type TxType = 'spend' | 'income' | 'transfer' | 'cc-payment';
+export type TxType = 'spend' | 'income' | 'transfer' | 'cc-payment' | 'savings' | 'investment';
 
 export type CategorySource = 'user' | 'merchant-rule' | 'seed-rule' | 'uncategorized';
 
@@ -30,6 +30,7 @@ export interface Transaction {
   hidden?: boolean;
   owner?: string | null;
   envelopeId?: string | null;
+  investmentAccount?: string | null;
   dedupeKey: string;
   rawRow?: Record<string, unknown>;
 }
@@ -104,5 +105,37 @@ export interface Envelope {
   name: string;
   description?: string;
   color: string;
+  createdAt: number;
+}
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  target: number;
+  pct: number;
+  color: string;
+}
+
+export interface InvestmentAccount {
+  id: string;
+  name: string;
+  institution: string;
+  marketValue: number | null;
+  roomLeft?: number;
+}
+
+export type AmountOp = '>' | '<' | '>=' | '<=' | '=';
+
+export interface CustomRule {
+  id: string;
+  name: string;
+  // Conditions (all present ones must match)
+  merchantContains?: string;
+  amountOp?: AmountOp;
+  amountValue?: number;
+  // Action (at least one)
+  targetType?: TxType;
+  targetCategoryId?: string;
+  priority: number;
   createdAt: number;
 }

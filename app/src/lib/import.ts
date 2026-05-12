@@ -5,6 +5,7 @@ import { parseFile } from '../parsers';
 import type { ParseResult } from '../parsers';
 import { normalizeMerchant, makeDedupeKey } from './normalize';
 import { categorize } from './categorizer';
+import { applyCustomRules } from './customRules';
 
 function resolveCategoryForward(catId: string | null, forwards: Map<string, string>): string | null {
   if (!catId || !forwards.size) return catId;
@@ -39,6 +40,8 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
     merchantRulesArr.map((r) => [r.merchantNormalized, r]),
   );
 
+  const customRulesArr = await db.customRules.orderBy('priority').toArray();
+
   const categoryForwardsArr = await db.categoryForwards.toArray();
   const categoryForwards = new Map<string, string>(
     categoryForwardsArr.map((f) => [f.fromCategoryId, f.toCategoryId]),
@@ -63,7 +66,7 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
     const catRaw = categorize(merchantNormalized, descForCat, r.type, merchantRules);
     const resolvedCatId = resolveCategoryForward(catRaw.categoryId, categoryForwards);
     const cat = resolvedCatId !== catRaw.categoryId ? { ...catRaw, categoryId: resolvedCatId } : catRaw;
-    const tx: Transaction = {
+    let tx: Transaction = {
       id: nanoid(),
       bank: r.bank,
       importBatchId: batchId,
@@ -79,6 +82,9 @@ export async function buildPreview(file: File): Promise<ImportPreview> {
       dedupeKey,
       rawRow: r.rawRow,
     };
+
+    const customPatch = applyCustomRules(customRulesArr, tx);
+    if (customPatch) tx = { ...tx, ...customPatch };
 
     if (existingKeys.has(dedupeKey) || dupSet.has(dedupeKey)) {
       duplicates++;

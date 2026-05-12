@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '../hooks/useQuery';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import type { Bank, Category, Person, Transaction, TxType } from '../types';
+import type { Bank, Category, InvestmentAccount, Person, Transaction, TxType } from '../types';
 import { SplitDialog } from '../components/SplitDialog';
 import { ContactPicker } from '../components/ContactPicker';
 import { recategorizeTransaction, undoRecategorize, type UndoData } from '../lib/recategorize';
@@ -15,6 +15,8 @@ const TYPE_LABEL: Record<string, string> = {
   income: 'Income',
   transfer: 'Transfer',
   'cc-payment': 'CC Payment',
+  savings: 'Savings',
+  investment: 'Investment',
   'needs-review': 'Needs Review',
 };
 
@@ -22,6 +24,8 @@ const TYPE_LABEL_FULL: Record<string, string> = {
   ...TYPE_LABEL,
   'cc-payment': 'Credit Card Payment',
 };
+
+const NON_CATEGORIZED_TYPES: TxType[] = ['transfer', 'cc-payment', 'savings', 'investment'];
 
 const BANK_NAMES: Record<string, string> = {
   amex: 'American Express',
@@ -49,6 +53,8 @@ export function TransactionsPage() {
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
   const outstandingEntries = useQuery(() => db.outstanding.where('status').notEqual('settled').toArray(), []) ?? [];
   const thresholdSetting = useQuery(() => db.settings.get('confidenceThreshold'), []);
+  const siAccountsSetting = useQuery(() => db.settings.get('si_accounts'), []);
+  const investAccounts: InvestmentAccount[] = (siAccountsSetting?.value as InvestmentAccount[] | undefined) ?? [];
   const contacts = useQuery(() => db.contacts.toArray(), []) ?? [];
   const people = useQuery(() => db.people.orderBy('createdAt').toArray(), []) ?? [];
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
@@ -97,6 +103,8 @@ export function TransactionsPage() {
     income: visibleTxs.filter(t => t.type === 'income').length,
     transfer: visibleTxs.filter(t => t.type === 'transfer').length,
     'cc-payment': visibleTxs.filter(t => t.type === 'cc-payment').length,
+    savings: visibleTxs.filter(t => t.type === 'savings').length,
+    investment: visibleTxs.filter(t => t.type === 'investment').length,
   }), [visibleTxs, confidenceThreshold]);
 
   const filtered = useMemo(() => {
@@ -158,7 +166,14 @@ export function TransactionsPage() {
   }
 
   async function onTypeChange(tx: Transaction, newType: TxType) {
-    await db.transactions.update(tx.id, { type: newType });
+    const patch: Partial<Transaction> = { type: newType };
+    if (NON_CATEGORIZED_TYPES.includes(newType)) patch.categoryId = null;
+    if (newType !== 'investment') patch.investmentAccount = null;
+    await db.transactions.update(tx.id, patch);
+  }
+
+  async function onInvestmentAccountChange(tx: Transaction, accountId: string | null) {
+    await db.transactions.update(tx.id, { investmentAccount: accountId || null });
   }
 
   async function onOwnerChange(tx: Transaction, owner: string | null) {
@@ -206,6 +221,8 @@ export function TransactionsPage() {
     { id: 'needs-review', label: 'Needs Review' },
     { id: 'spend', label: 'Spend' },
     { id: 'income', label: 'Income' },
+    { id: 'savings', label: 'Savings' },
+    { id: 'investment', label: 'Investment' },
     { id: 'transfer', label: 'Transfer' },
     { id: 'cc-payment', label: 'Credit Card Payment' },
   ];
@@ -349,10 +366,12 @@ export function TransactionsPage() {
                   category={t.categoryId ? catMap.get(t.categoryId) : undefined}
                   categories={categories}
                   people={people}
+                  investAccounts={investAccounts}
                   confidenceThreshold={confidenceThreshold}
                   isOwed={owedTxIds.has(t.id)}
                   onCategoryChange={requestCategoryChange}
                   onTypeChange={onTypeChange}
+                  onInvestmentAccountChange={onInvestmentAccountChange}
                   onOwnerChange={onOwnerChange}
                   onSplit={() => setSplitTx(t)}
                   onHide={onHide}
@@ -433,17 +452,19 @@ export function TransactionsPage() {
 }
 
 function TxRow({
-  tx, category, categories, people, confidenceThreshold, isOwed,
-  onCategoryChange, onTypeChange, onOwnerChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed, onMarkReviewed,
+  tx, category, categories, people, investAccounts, confidenceThreshold, isOwed,
+  onCategoryChange, onTypeChange, onInvestmentAccountChange, onOwnerChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed, onMarkReviewed,
 }: {
   tx: Transaction;
   category: Category | undefined;
   categories: Category[];
   people: Person[];
+  investAccounts: InvestmentAccount[];
   confidenceThreshold: number;
   isOwed: boolean;
   onCategoryChange: (tx: Transaction, catId: string | null) => void;
   onTypeChange: (tx: Transaction, type: TxType) => void;
+  onInvestmentAccountChange: (tx: Transaction, accountId: string | null) => void;
   onOwnerChange: (tx: Transaction, owner: string | null) => void;
   onSplit: () => void;
   onHide: (tx: Transaction) => void;
@@ -627,7 +648,7 @@ function TxRow({
               {TYPE_LABEL[tx.type] ?? tx.type}
             </span>
             <select value={tx.type} onChange={e => onTypeChange(tx, e.target.value as TxType)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}>
-              {(['spend', 'income', 'transfer', 'cc-payment'] as TxType[]).map(v => <option key={v} value={v}>{TYPE_LABEL_FULL[v]}</option>)}
+              {(['spend', 'income', 'savings', 'investment', 'transfer', 'cc-payment'] as TxType[]).map(v => <option key={v} value={v}>{TYPE_LABEL_FULL[v]}</option>)}
             </select>
           </div>
         </td>
@@ -642,6 +663,21 @@ function TxRow({
               <select value={tx.categoryId ?? ''} onChange={e => onCategoryChange(tx, e.target.value || null)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}>
                 <option value="">Uncategorized</option>
                 {categories.filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          ) : tx.type === 'investment' ? (
+            <div style={{ position: 'relative', display: 'inline-flex' }}>
+              <span className="chip" style={{ color: tx.investmentAccount ? 'var(--ink-soft)' : 'var(--ink-mute)' }}>
+                {tx.investmentAccount?.toUpperCase() ?? 'No account'}
+                <Icon name="chevron_down" size={10} />
+              </span>
+              <select
+                value={tx.investmentAccount ?? ''}
+                onChange={e => onInvestmentAccountChange(tx, e.target.value || null)}
+                style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
+              >
+                <option value="">No account</option>
+                {investAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
           ) : <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>}
@@ -831,6 +867,8 @@ function AddTxModal({ categories, people, onClose }: { categories: Category[]; p
             <select style={sel} value={type} onChange={e => setType(e.target.value as TxType)}>
               <option value="spend">Spend</option>
               <option value="income">Income</option>
+              <option value="savings">Savings</option>
+              <option value="investment">Investment</option>
               <option value="transfer">Transfer</option>
               <option value="cc-payment">Credit Card Payment</option>
             </select>
