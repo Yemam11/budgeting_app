@@ -28,6 +28,7 @@ export function DashboardPage({ onNavigate, userName }: Props) {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
   const hasCustomRange = !!(customFrom || customTo);
 
   const availableMonths = useMemo(() => {
@@ -178,7 +179,7 @@ export function DashboardPage({ onNavigate, userName }: Props) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div className="eyebrow" style={{ marginBottom: 6 }}>Overview · {hasCustomRange ? `${customFrom || '…'} → ${customTo || '…'}` : monthFull(thisMonth)}</div>
+          <div className="eyebrow" style={{ marginBottom: 6 }}>Overview · {hasCustomRange ? 'Custom Time Period' : monthFull(thisMonth)}</div>
           <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>{greeting}{userName ? `, ${userName}` : ''}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -195,25 +196,32 @@ export function DashboardPage({ onNavigate, userName }: Props) {
               <Icon name="calendar" size={14} />
             </div>
           </div>
-          <span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>or</span>
-          <input
-            type="date" className="btn btn-ghost"
-            style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
-            value={customFrom}
-            onChange={e => setCustomFrom(e.target.value)}
-            title="Custom from date"
-          />
-          <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>→</span>
-          <input
-            type="date" className="btn btn-ghost"
-            style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
-            value={customTo}
-            onChange={e => setCustomTo(e.target.value)}
-            title="Custom to date"
-          />
-          {hasCustomRange && (
-            <button className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setCustomFrom(''); setCustomTo(''); }}>
-              Clear
+          {(showCustomPicker || hasCustomRange) ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                type="date" className="btn btn-ghost"
+                style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
+                value={customFrom}
+                onChange={e => setCustomFrom(e.target.value)}
+                title="Start date"
+              />
+              <span style={{ fontSize: 11, color: 'var(--ink-mute)', lineHeight: 1 }}>→</span>
+              <input
+                type="date" className="btn btn-ghost"
+                style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
+                value={customTo}
+                onChange={e => setCustomTo(e.target.value)}
+                title="End date"
+              />
+              <button className="btn btn-ghost" style={{ padding: '5px 8px' }}
+                onClick={() => { setCustomFrom(''); setCustomTo(''); setShowCustomPicker(false); }}>
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          ) : (
+            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setShowCustomPicker(true)}>
+              <Icon name="calendar" size={12} />
+              Custom Time Period
             </button>
           )}
           <button className="btn btn-primary" onClick={() => onNavigate?.('import')}><Icon name="upload" size={14} />Import statement</button>

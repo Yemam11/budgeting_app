@@ -1,3 +1,4 @@
+import React from 'react';
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '../hooks/useQuery';
@@ -49,6 +50,45 @@ function getDateCutoff(preset: DatePreset): string | null {
   return null;
 }
 
+function FilterSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ padding: '8px 16px 10px' }}>
+      <div className="eyebrow" style={{ marginBottom: 6 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function FilterCheckItem({ label, count, checked, onChange }: {
+  label: string; count?: number; checked: boolean; onChange: () => void;
+}) {
+  return (
+    <label style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '4px 0', cursor: 'pointer', userSelect: 'none',
+    }}>
+      <div style={{
+        width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+        border: checked ? '2px solid var(--accent)' : '1.5px solid var(--line-strong)',
+        background: checked ? 'var(--accent)' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 0.1s',
+      }}>
+        {checked && (
+          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 5l2.5 2.5L8 2.5" />
+          </svg>
+        )}
+      </div>
+      <input type="checkbox" checked={checked} onChange={onChange} style={{ display: 'none' }} />
+      <span style={{ flex: 1, fontSize: 13, color: 'var(--ink)' }}>{label}</span>
+      {count !== undefined && (
+        <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontFamily: 'var(--mono)' }}>{count}</span>
+      )}
+    </label>
+  );
+}
+
 export function TransactionsPage() {
   const txs = useQuery(() => db.transactions.orderBy('date').reverse().toArray(), []) ?? [];
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
@@ -61,14 +101,22 @@ export function TransactionsPage() {
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
   const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
 
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [dateFilter, setDateFilter] = useState<DatePreset>('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [bankFilter, setBankFilter] = useState('all');
-  const [ownerFilter, setOwnerFilter] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const hasCustomRange = !!(customFrom || customTo);
+  const [typeFilters, setTypeFilters] = useState<Set<TypeFilter>>(new Set());
+  const [bankFilters, setBankFilters] = useState<Set<string>>(new Set());
+  const [ownerFilters, setOwnerFilters] = useState<Set<string>>(new Set());
+  const [categoryFilters, setCategoryFilters] = useState<Set<string>>(new Set());
+  const [amountMin, setAmountMin] = useState('');
+  const [amountMax, setAmountMax] = useState('');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
   const [search, setSearch] = useState('');
+  const filterBtnRef = useRef<HTMLButtonElement>(null);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);
   const [holdingDialogTx, setHoldingDialogTx] = useState<Transaction | null>(null);
   const [holdingDialogIsEdit, setHoldingDialogIsEdit] = useState(false);
@@ -99,6 +147,54 @@ export function TransactionsPage() {
   }, [visibleTxs]);
   const owedTxIds = useMemo(() => new Set(outstandingEntries.map(e => e.transactionId)), [outstandingEntries]);
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const t = e.target as Node;
+      if (
+        filterBtnRef.current && !filterBtnRef.current.contains(t) &&
+        filterPanelRef.current && !filterPanelRef.current.contains(t)
+      ) setShowFilterPanel(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const bankCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    visibleTxs.forEach(t => { c[t.bank] = (c[t.bank] ?? 0) + 1; });
+    return c;
+  }, [visibleTxs]);
+
+  const ownerCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    visibleTxs.forEach(t => { const k = t.owner ?? '__unassigned__'; c[k] = (c[k] ?? 0) + 1; });
+    return c;
+  }, [visibleTxs]);
+
+  const categoryCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    visibleTxs.forEach(t => { const k = t.categoryId ?? '__uncategorized__'; c[k] = (c[k] ?? 0) + 1; });
+    return c;
+  }, [visibleTxs]);
+
+  const activeFilterCount = typeFilters.size + bankFilters.size + ownerFilters.size + categoryFilters.size +
+    (amountMin || amountMax ? 1 : 0);
+
+  function clearAllFilters() {
+    setTypeFilters(new Set());
+    setBankFilters(new Set());
+    setOwnerFilters(new Set());
+    setCategoryFilters(new Set());
+    setAmountMin('');
+    setAmountMax('');
+  }
+
+  function toggleSet<T>(set: Set<T>, val: T): Set<T> {
+    const next = new Set(set);
+    if (next.has(val)) next.delete(val); else next.add(val);
+    return next;
+  }
+
   const typeCounts = useMemo(() => ({
     all: visibleTxs.length,
     'needs-review': visibleTxs.filter(t => t.type === 'spend' && t.categorySource !== 'user' && t.categoryConfidence < confidenceThreshold).length,
@@ -114,6 +210,8 @@ export function TransactionsPage() {
     const s = search.trim().toLowerCase();
     const cutoff = getDateCutoff(dateFilter);
     const isMonthFilter = /^\d{4}-\d{2}$/.test(dateFilter);
+    const minAmt = amountMin ? parseFloat(amountMin) : null;
+    const maxAmt = amountMax ? parseFloat(amountMax) : null;
     return visibleTxs.filter(t => {
       const hasCustomDates = customFrom || customTo;
       if (hasCustomDates) {
@@ -124,22 +222,25 @@ export function TransactionsPage() {
       } else if (cutoff) {
         if (t.date < cutoff) return false;
       }
-      if (typeFilter === 'needs-review') {
-        if (t.type !== 'spend' || t.categorySource === 'user' || t.categoryConfidence >= confidenceThreshold) return false;
-      } else if (typeFilter !== 'all' && t.type !== typeFilter) return false;
+      if (typeFilters.size > 0) {
+        const isNR = t.type === 'spend' && t.categorySource !== 'user' && t.categoryConfidence < confidenceThreshold;
+        if (!typeFilters.has(t.type as TypeFilter) && !(typeFilters.has('needs-review') && isNR)) return false;
+      }
       if (s && !t.merchantRaw.toLowerCase().includes(s) && !(t.merchantNormalized?.toLowerCase().includes(s)) && !(t.notes?.toLowerCase().includes(s))) return false;
-      if (bankFilter !== 'all' && t.bank !== bankFilter) return false;
-      if (ownerFilter !== 'all') {
-        if (ownerFilter === '__unassigned__' && t.owner) return false;
-        if (ownerFilter !== '__unassigned__' && t.owner !== ownerFilter) return false;
+      if (bankFilters.size > 0 && !bankFilters.has(t.bank)) return false;
+      if (ownerFilters.size > 0) {
+        const m = (ownerFilters.has('__unassigned__') && !t.owner) || (!!t.owner && ownerFilters.has(t.owner));
+        if (!m) return false;
       }
-      if (categoryFilter !== 'all') {
-        if (categoryFilter === '__uncategorized__' && t.categoryId) return false;
-        if (categoryFilter !== '__uncategorized__' && t.categoryId !== categoryFilter) return false;
+      if (categoryFilters.size > 0) {
+        const m = (categoryFilters.has('__uncategorized__') && !t.categoryId) || (!!t.categoryId && categoryFilters.has(t.categoryId));
+        if (!m) return false;
       }
+      if (minAmt !== null && Math.abs(t.amount) < minAmt) return false;
+      if (maxAmt !== null && Math.abs(t.amount) > maxAmt) return false;
       return true;
     });
-  }, [visibleTxs, typeFilter, dateFilter, customFrom, customTo, search, confidenceThreshold, bankFilter, ownerFilter, categoryFilter]);
+  }, [visibleTxs, typeFilters, dateFilter, customFrom, customTo, search, confidenceThreshold, bankFilters, ownerFilters, categoryFilters, amountMin, amountMax]);
 
   const spend = useMemo(() => visibleTxs.filter(t => t.type === 'spend').reduce((s, t) => s + t.amount, 0), [visibleTxs]);
   const income = useMemo(() => visibleTxs.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0), [visibleTxs]);
@@ -223,16 +324,6 @@ export function TransactionsPage() {
     setOwedName('');
   }
 
-  const FILTERS: { id: TypeFilter; label: string }[] = [
-    { id: 'all', label: 'All' },
-    { id: 'needs-review', label: 'Needs Review' },
-    { id: 'spend', label: 'Spend' },
-    { id: 'income', label: 'Income' },
-    { id: 'savings', label: 'Savings' },
-    { id: 'investment', label: 'Investment' },
-    { id: 'transfer', label: 'Transfer' },
-    { id: 'cc-payment', label: 'Credit Card Payment' },
-  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -258,9 +349,32 @@ export function TransactionsPage() {
               {months.map(m => <option key={m} value={m}>{m}</option>)}
             </optgroup>
           </select>
-          <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customFrom} onChange={e => { setCustomFrom(e.target.value); setDateFilter('all'); }} title="From date" />
-          <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>→</span>
-          <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customTo} onChange={e => { setCustomTo(e.target.value); setDateFilter('all'); }} title="To date" />
+          {(showCustomPicker || hasCustomRange) ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="date" className="btn btn-ghost"
+                style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
+                value={customFrom}
+                onChange={e => { setCustomFrom(e.target.value); setDateFilter('all'); }}
+                title="Start date"
+              />
+              <span style={{ fontSize: 11, color: 'var(--ink-mute)', lineHeight: 1 }}>→</span>
+              <input type="date" className="btn btn-ghost"
+                style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
+                value={customTo}
+                onChange={e => { setCustomTo(e.target.value); setDateFilter('all'); }}
+                title="End date"
+              />
+              <button className="btn btn-ghost" style={{ padding: '5px 8px' }}
+                onClick={() => { setCustomFrom(''); setCustomTo(''); setShowCustomPicker(false); }}>
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          ) : (
+            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setShowCustomPicker(true)}>
+              <Icon name="calendar" size={12} />
+              Custom Time Period
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => setShowAddTx(true)}>
             <Icon name="plus" size={14} />Add transaction
           </button>
@@ -316,54 +430,175 @@ export function TransactionsPage() {
       )}
 
       {/* Toolbar */}
-      <div className="glass" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: '0 0 280px' }}>
+      <div className="glass" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Search */}
+        <div style={{ position: 'relative', flex: '0 0 260px' }}>
           <div style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-mute)', pointerEvents: 'none' }}>
             <Icon name="search" size={14} />
           </div>
           <input className="input" style={{ paddingLeft: 30, width: '100%' }} placeholder="Search merchant or notes…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <div className="seg-control" style={{ flexWrap: 'wrap' }}>
-          {FILTERS.map(f => (
-            <button key={f.id} className={`seg-btn${typeFilter === f.id ? ' active' : ''}`} onClick={() => setTypeFilter(f.id)}>
-              {f.label}
-              <span className="mono" style={{ fontSize: 10, color: 'var(--ink-mute)' }}>
-                {typeCounts[f.id as keyof typeof typeCounts] ?? ''}
+
+        {/* Filter button + panel */}
+          <button
+            ref={filterBtnRef}
+            className={activeFilterCount > 0 ? 'btn btn-primary' : 'btn btn-ghost'}
+            style={{ fontSize: 12, gap: 6 }}
+            onClick={() => {
+              if (!showFilterPanel && filterBtnRef.current) {
+                const r = filterBtnRef.current.getBoundingClientRect();
+                setPanelPos({ top: r.bottom + 8, left: r.left });
+              }
+              setShowFilterPanel(v => !v);
+            }}
+          >
+            <Icon name="filter" size={12} />
+            Filters
+            {activeFilterCount > 0 && (
+              <span style={{
+                minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px',
+                background: 'oklch(100% 0 0 / 0.25)', fontSize: 11, fontWeight: 700,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: 'var(--mono)',
+              }}>
+                {activeFilterCount}
               </span>
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          {availableBanks.length > 1 && (
-            <select value={bankFilter} onChange={e => setBankFilter(e.target.value)} className="btn btn-ghost" style={{ fontSize: 12 }}>
-              <option value="all">All banks</option>
-              {availableBanks.map(b => <option key={b} value={b}>{BANK_NAMES[b] ?? b}</option>)}
-            </select>
+            )}
+          </button>
+
+          {showFilterPanel && panelPos && createPortal(
+            <div ref={filterPanelRef} style={{
+              position: 'fixed', top: panelPos.top, left: panelPos.left, zIndex: 9999,
+              width: 340,
+              background: 'var(--bg)',
+              border: '1px solid var(--line-strong)',
+              borderRadius: 14,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.28)',
+              overflow: 'hidden',
+            }}>
+              {/* Panel header */}
+              <div style={{
+                padding: '12px 16px', borderBottom: '1px solid var(--line)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>Filters</span>
+                {activeFilterCount > 0 && (
+                  <button onClick={clearAllFilters}
+                    style={{ fontSize: 11, color: 'var(--accent-ink)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                    Clear all
+                  </button>
+                )}
+              </div>
+
+              {/* Scrollable sections */}
+              <div style={{ maxHeight: 460, overflowY: 'auto', padding: '8px 0' }}>
+
+                {/* Type */}
+                <FilterSection label="Transaction Type">
+                  {([
+                    { id: 'spend',        label: 'Spend' },
+                    { id: 'income',       label: 'Income' },
+                    { id: 'transfer',     label: 'Transfer' },
+                    { id: 'cc-payment',   label: 'CC Payment' },
+                    { id: 'savings',      label: 'Savings' },
+                    { id: 'investment',   label: 'Investment' },
+                    { id: 'needs-review', label: 'Needs Review' },
+                  ] as { id: TypeFilter; label: string }[]).map(({ id, label }) => (
+                    <FilterCheckItem key={id} label={label}
+                      count={typeCounts[id as keyof typeof typeCounts]}
+                      checked={typeFilters.has(id)}
+                      onChange={() => setTypeFilters(s => toggleSet(s, id))}
+                    />
+                  ))}
+                </FilterSection>
+
+                {/* Bank */}
+                {availableBanks.length > 1 && (
+                  <FilterSection label="Bank">
+                    {availableBanks.map(b => (
+                      <FilterCheckItem key={b} label={BANK_NAMES[b] ?? b}
+                        count={bankCounts[b]}
+                        checked={bankFilters.has(b)}
+                        onChange={() => setBankFilters(s => toggleSet(s, b))}
+                      />
+                    ))}
+                  </FilterSection>
+                )}
+
+                {/* Owner */}
+                {(availableOwners.length > 0 || people.length > 0) && (
+                  <FilterSection label="Owner">
+                    <FilterCheckItem label="Unassigned"
+                      count={ownerCounts['__unassigned__']}
+                      checked={ownerFilters.has('__unassigned__')}
+                      onChange={() => setOwnerFilters(s => toggleSet(s, '__unassigned__'))}
+                    />
+                    {[...new Set([...availableOwners, ...people.map(p => p.name)])].sort().map(name => (
+                      <FilterCheckItem key={name} label={name}
+                        count={ownerCounts[name]}
+                        checked={ownerFilters.has(name)}
+                        onChange={() => setOwnerFilters(s => toggleSet(s, name))}
+                      />
+                    ))}
+                  </FilterSection>
+                )}
+
+                {/* Category */}
+                <FilterSection label="Category">
+                  <FilterCheckItem label="Uncategorized"
+                    count={categoryCounts['__uncategorized__']}
+                    checked={categoryFilters.has('__uncategorized__')}
+                    onChange={() => setCategoryFilters(s => toggleSet(s, '__uncategorized__'))}
+                  />
+                  {categories.filter(c => !c.archived).map(c => (
+                    <FilterCheckItem key={c.id} label={c.name}
+                      count={categoryCounts[c.id]}
+                      checked={categoryFilters.has(c.id)}
+                      onChange={() => setCategoryFilters(s => toggleSet(s, c.id))}
+                    />
+                  ))}
+                </FilterSection>
+
+                {/* Amount range */}
+                <FilterSection label="Amount">
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--ink-mute)', pointerEvents: 'none' }}>$</span>
+                      <input className="input" type="number" min="0" placeholder="Min"
+                        style={{ paddingLeft: 22, fontSize: 12, width: '100%' }}
+                        value={amountMin} onChange={e => setAmountMin(e.target.value)} />
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>–</span>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--ink-mute)', pointerEvents: 'none' }}>$</span>
+                      <input className="input" type="number" min="0" placeholder="Max"
+                        style={{ paddingLeft: 22, fontSize: 12, width: '100%' }}
+                        value={amountMax} onChange={e => setAmountMax(e.target.value)} />
+                    </div>
+                  </div>
+                </FilterSection>
+
+              </div>
+
+              {/* Panel footer */}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--line)', fontSize: 12, color: 'var(--ink-mute)', textAlign: 'right' }}>
+                {filtered.length.toLocaleString()} result{filtered.length !== 1 ? 's' : ''}
+              </div>
+            </div>,
+            document.body
           )}
-          <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="btn btn-ghost" style={{ fontSize: 12 }}>
-            <option value="all">All owners</option>
-            <option value="__unassigned__">Unassigned</option>
-            {[...new Set([...availableOwners, ...people.map(p => p.name)])].sort().map(name => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="btn btn-ghost" style={{ fontSize: 12 }}>
-            <option value="all">All categories</option>
-            <option value="__uncategorized__">Uncategorized</option>
-            {categories.filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          {(bankFilter !== 'all' || ownerFilter !== 'all' || categoryFilter !== 'all') && (
-            <button className="btn btn-ghost" style={{ fontSize: 11, color: 'var(--ink-mute)' }} onClick={() => { setBankFilter('all'); setOwnerFilter('all'); setCategoryFilter('all'); }}>
-              Clear
-            </button>
-          )}
-        </div>
-        <div style={{ flex: 1 }} />
-        {filtered.length !== visibleTxs.length && (
-          <div style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
-            {filtered.length.toLocaleString()} of {visibleTxs.length.toLocaleString()}
-          </div>
+
+        {activeFilterCount > 0 && (
+          <button className="btn btn-ghost" style={{ fontSize: 11, color: 'var(--ink-mute)' }} onClick={clearAllFilters}>
+            Clear all
+          </button>
         )}
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{ fontSize: 12, color: 'var(--ink-mute)' }}>
+          {filtered.length.toLocaleString()}{filtered.length !== visibleTxs.length ? ` of ${visibleTxs.length.toLocaleString()}` : ''} results
+        </div>
       </div>
 
       {/* Table — scrollable */}

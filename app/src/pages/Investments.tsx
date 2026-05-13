@@ -137,9 +137,9 @@ function InvestAccountCard({
   }, []);
 
   return (
-    <div className="glass" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div className="glass" style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 0 }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
           <div style={{ width: 38, height: 38, borderRadius: 11, background: pal.bg,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -159,8 +159,8 @@ function InvestAccountCard({
       </div>
 
       {/* Holdings list */}
-      <div>
-        <div className="eyebrow" style={{ marginBottom: 6 }}>Holdings</div>
+      <div style={{ paddingBottom: 16, borderBottom: '1px solid var(--line)' }}>
+        <div className="eyebrow" style={{ marginBottom: 8 }}>Holdings</div>
         {holdings.length === 0 && !addingHolding && (
           <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginBottom: 6 }}>No holdings recorded yet.</div>
         )}
@@ -172,7 +172,7 @@ function InvestAccountCard({
           const isEditing  = editSharesId === h.id;
           const isUSD      = usdConverted.includes(h.ticker);
           return (
-            <div key={h.id} style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
+            <div key={h.id} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 0', borderBottom: '1px solid var(--line)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                   <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 12 }}>{h.ticker}</span>
@@ -265,15 +265,15 @@ function InvestAccountCard({
             </div>
           </div>
         ) : (
-          <button className="btn btn-ghost" style={{ fontSize: 11, marginTop: 2 }} onClick={() => setAddingHolding(true)}>
+          <button className="btn btn-ghost" style={{ fontSize: 11, marginTop: 8 }} onClick={() => setAddingHolding(true)}>
             <Icon name="plus" size={11} />Add holding
           </button>
         )}
       </div>
 
       {/* Net deposits */}
-      <div>
-        <div className="eyebrow" style={{ marginBottom: 4 }}>Net Deposits</div>
+      <div style={{ paddingTop: 16, paddingBottom: 16, borderBottom: '1px solid var(--line)' }}>
+        <div className="eyebrow" style={{ marginBottom: 6 }}>Net Deposits</div>
         {editND ? (
           <div>
             <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 6 }}>Set current net deposits</div>
@@ -314,8 +314,8 @@ function InvestAccountCard({
       </div>
 
       {/* Market value */}
-      <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-surface)', border: '1px solid var(--line)' }}>
-        <div className="eyebrow" style={{ marginBottom: 4 }}>Market Value</div>
+      <div style={{ paddingTop: 16 }}>
+        <div className="eyebrow" style={{ marginBottom: 6 }}>Market Value</div>
         {editMV ? (
           <div>
             <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 6 }}>Override market value</div>
@@ -380,7 +380,7 @@ function InvestAccountCard({
 
       {/* Contribution room */}
       {!!account.roomLeft && (
-        <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid var(--line)',
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--line)',
           fontSize: 11, color: 'var(--ink-mute)' }}>
           Contribution room:{' '}
           <span style={{ color: 'var(--ink-soft)', fontFamily: 'var(--mono)' }}>
@@ -691,7 +691,7 @@ export function InvestmentsPage() {
         <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--line)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 500, fontSize: 14 }}>Investment history</div>
-          <span className="chip">From "Investment" category · transfer type · all time</span>
+          <span style={{ fontSize: 11, color: 'var(--ink-mute)' }}>Investment-tagged transfers · all time</span>
         </div>
         <table className="data">
           <thead>
