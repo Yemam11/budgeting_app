@@ -11,9 +11,10 @@ import { ContactsPage } from './pages/Contacts';
 import { SettingsPage } from './pages/Settings';
 import { EnvelopesPage } from './pages/Envelopes';
 import { SavingsInvestmentsPage } from './pages/SavingsInvestments';
+import { InvestmentsPage } from './pages/Investments';
 import { Icon, Toggle } from './components/Primitives';
 
-type Tab = 'dashboard' | 'import' | 'transactions' | 'budgets' | 'envelopes' | 'savings' | 'outstanding' | 'contacts' | 'settings';
+type Tab = 'dashboard' | 'import' | 'transactions' | 'budgets' | 'envelopes' | 'savings' | 'investments' | 'outstanding' | 'contacts' | 'settings';
 
 const NAV: ({ section: string } | { id: Tab; label: string; icon: string })[] = [
   { section: 'General' },
@@ -21,6 +22,7 @@ const NAV: ({ section: string } | { id: Tab; label: string; icon: string })[] = 
   { id: 'transactions', label: 'Transactions', icon: 'transactions' },
   { id: 'budgets', label: 'Budgets', icon: 'budget' },
   { id: 'savings', label: 'Savings', icon: 'piggybank' },
+  { id: 'investments', label: 'Investments', icon: 'chart_line' },
   { id: 'envelopes', label: 'Envelopes', icon: 'envelope' },
   { section: 'Tools' },
   { id: 'import', label: 'Import', icon: 'import' },
@@ -197,6 +199,7 @@ export default function App() {
           {tab === 'budgets' && <BudgetsPage />}
           {tab === 'envelopes' && <EnvelopesPage />}
           {tab === 'savings' && <SavingsInvestmentsPage />}
+          {tab === 'investments' && <InvestmentsPage />}
           {tab === 'outstanding' && <OutstandingPage />}
           {tab === 'contacts' && <ContactsPage />}
           {tab === 'settings' && <SettingsPage userName={userName} />}

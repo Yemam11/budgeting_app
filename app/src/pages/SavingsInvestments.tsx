@@ -3,7 +3,7 @@ import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import { fmtCAD, fmtCompact, currentMonthKey, txsInMonth } from '../lib/money';
 import { Icon } from '../components/Primitives';
-import type { SavingsGoal, InvestmentAccount } from '../types';
+import type { SavingsGoal } from '../types';
 
 const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const monthLabel = (k: string) => `${MONTH_FULL[parseInt(k.slice(5, 7), 10) - 1]} ${k.slice(0, 4)}`;
@@ -14,11 +14,6 @@ const SI_GOALS_DEFAULT: SavingsGoal[] = [
   { id: 'sg3', name: 'Emergency Fund',     target: 15000, pct: 20, color: 'oklch(66% 0.15 45)'  },
 ];
 
-const SI_ACCOUNTS_DEFAULT: InvestmentAccount[] = [
-  { id: 'tfsa', name: 'TFSA', institution: 'Questrade', marketValue: null, roomLeft: 47500 },
-  { id: 'rrsp', name: 'RRSP', institution: 'Questrade', marketValue: null },
-  { id: 'fhsa', name: 'FHSA', institution: 'Questrade', marketValue: null, roomLeft: 7400 },
-];
 
 const GOAL_EXTRA_COLORS = [
   'oklch(62% 0.17 300)',
@@ -27,8 +22,8 @@ const GOAL_EXTRA_COLORS = [
   'oklch(68% 0.13 90)',
 ];
 
-// ── PartitionSlider ──────────────────────────────────────────────
-// Shows only ACTIVE (unlocked) goals — always fills 100% of bar.
+// Ã¢â€â‚¬Ã¢â€â‚¬ PartitionSlider Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Shows only ACTIVE (unlocked) goals Ã¢â‚¬â€ always fills 100% of bar.
 // `balance` = freeBalance from parent; when 0, shows % instead of dollars.
 function PartitionSlider({ goals, balance, onGoalsChange }: {
   goals: SavingsGoal[];
@@ -157,7 +152,7 @@ function PartitionSlider({ goals, balance, onGoalsChange }: {
   );
 }
 
-// ── GoalCard ─────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ GoalCard Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRemove, onToggleLock }: {
   goal: SavingsGoal;
   freeBalance: number;
@@ -204,7 +199,7 @@ function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRem
             : <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontFamily: 'var(--mono)' }}>{Math.round(goal.pct)}%</span>
           }
           <button onClick={onToggleLock}
-            title={goal.locked ? 'Unlock — re-enter active savings pool' : 'Lock value at current amount'}
+            title={goal.locked ? 'Unlock Ã¢â‚¬â€ re-enter active savings pool' : 'Lock value at current amount'}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18,
               borderRadius: 4, border: 'none', cursor: 'pointer',
               background: goal.locked ? `color-mix(in oklab, ${goal.color}, transparent 78%)` : 'none',
@@ -276,15 +271,15 @@ function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRem
         <div style={{ fontSize: 10, color: 'var(--ink-mute)', marginTop: 4, fontFamily: 'var(--mono)' }}>
           {Math.round(progress * 100)}%{' '}
           {allocated < goal.target
-            ? <span>· {fmtCAD(goal.target - allocated)} to go</span>
-            : <span style={{ color: 'oklch(50% 0.16 160)' }}>· Goal reached 🎉</span>}
+            ? <span>Ã‚Â· {fmtCAD(goal.target - allocated)} to go</span>
+            : <span style={{ color: 'oklch(50% 0.16 160)' }}>Ã‚Â· Goal reached Ã°Å¸Å½â€°</span>}
         </div>
       </div>
     </div>
   );
 }
 
-// ── FlexAllocRow ─────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ FlexAllocRow Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function FlexAllocRow({ color, label, sublabel, amount, accent }: {
   color: string; label: string; sublabel?: string; amount: number; accent: string;
 }) {
@@ -305,7 +300,7 @@ function FlexAllocRow({ color, label, sublabel, amount, accent }: {
   );
 }
 
-// ── FlexCard ─────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ FlexCard Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
   goals: SavingsGoal[];
   flexBalance: number;
@@ -339,10 +334,10 @@ function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
 
         {/* Balance */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="eyebrow" style={{ marginBottom: 2 }}>Flex Account · Virtual buffer</div>
+          <div className="eyebrow" style={{ marginBottom: 2 }}>Flex Account Ã‚Â· Virtual buffer</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 30, fontWeight: 500, letterSpacing: '-0.025em', color: accentColor, fontFamily: 'var(--mono)' }}>
-              {positive ? '' : '−'}{fmtCAD(Math.abs(flexBalance))}
+              {positive ? '' : 'Ã¢Ë†â€™'}{fmtCAD(Math.abs(flexBalance))}
             </span>
             <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>running balance</span>
           </div>
@@ -360,7 +355,7 @@ function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
           </div>
           {thisMoSurplus > 0 && (
             <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setOpen(o => !o)}>
-              {open ? 'Close' : 'Allocate →'}
+              {open ? 'Close' : 'Allocate Ã¢â€ â€™'}
             </button>
           )}
         </div>
@@ -370,13 +365,13 @@ function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
       {open && thisMoSurplus > 0 && (
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid color-mix(in oklab, ${accentColor}, transparent 72%)` }}>
           <div className="eyebrow" style={{ marginBottom: 12 }}>
-            Suggested allocation — {fmtCAD(thisMoSurplus)} surplus
+            Suggested allocation Ã¢â‚¬â€ {fmtCAD(thisMoSurplus)} surplus
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <FlexAllocRow
               color="oklch(58% 0.18 250)"
               label="Savings goals"
-              sublabel={goals.map(g => `${g.name.split(' ')[0]} ${Math.round(g.pct)}%`).join(' · ')}
+              sublabel={goals.map(g => `${g.name.split(' ')[0]} ${Math.round(g.pct)}%`).join(' Ã‚Â· ')}
               amount={savingsAlloc}
               accent={accentColor} />
             {goals.map(g => (
@@ -401,169 +396,8 @@ function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
   );
 }
 
-// ── InvestAccountCard ─────────────────────────────────────────────
-function InvestAccountCard({ account, netDepositsEffective, netDepositsRaw, hasNdOverride, onUpdateMV, onUpdateND, onResetND, onRemove }: {
-  account: InvestmentAccount;
-  netDepositsEffective: number;
-  netDepositsRaw: number;
-  hasNdOverride: boolean;
-  onUpdateMV: (val: number) => void;
-  onUpdateND: (val: number, base: number) => void;
-  onResetND: () => void;
-  onRemove: () => void;
-}) {
-  const [editMV,  setEditMV]  = useState(false);
-  const [mvDraft, setMVDraft] = useState('');
-  const [editND,  setEditND]  = useState(false);
-  const [ndDraft, setNDDraft] = useState('');
 
-  const hasMV   = account.marketValue != null && account.marketValue > 0;
-  const gain    = hasMV ? account.marketValue! - netDepositsEffective : null;
-  const gainPct = hasMV && netDepositsEffective > 0 ? (gain! / netDepositsEffective) * 100 : null;
-  const isUp    = gain != null && gain >= 0;
-
-  const PALETTE: Record<string, { bg: string; label: string }> = {
-    tfsa: { bg: 'linear-gradient(135deg, oklch(52% 0.18 278), oklch(44% 0.20 265))', label: 'TFSA' },
-    rrsp: { bg: 'linear-gradient(135deg, oklch(52% 0.17 198), oklch(44% 0.18 185))', label: 'RRSP' },
-    fhsa: { bg: 'linear-gradient(135deg, oklch(54% 0.17 158), oklch(46% 0.18 148))', label: 'FHSA' },
-  };
-  const pal = PALETTE[account.id] ?? {
-    bg: 'linear-gradient(135deg, oklch(48% 0.12 260), oklch(40% 0.10 260))',
-    label: account.name.slice(0, 4).toUpperCase(),
-  };
-
-  const saveMV = () => {
-    const v = parseFloat(mvDraft.replace(/[^0-9.]/g, ''));
-    if (v > 0) { onUpdateMV(v); setEditMV(false); }
-  };
-
-  const saveND = () => {
-    const v = parseFloat(ndDraft.replace(/[^0-9.]/g, ''));
-    if (!isNaN(v) && v >= 0) { onUpdateND(v, netDepositsRaw); setEditND(false); }
-  };
-
-  return (
-    <div className="glass" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 11, background: pal.bg,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontWeight: 700, fontSize: 11, fontFamily: 'var(--mono)',
-            letterSpacing: '-0.03em', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), 0 2px 6px rgba(0,0,0,0.15)' }}>
-            {pal.label}
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>{account.name}</div>
-            <div style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{account.institution}</div>
-          </div>
-        </div>
-        <button onClick={onRemove}
-          style={{ display: 'flex', padding: 4, borderRadius: 6, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)' }}>
-          <Icon name="x" size={12} />
-        </button>
-      </div>
-
-      {/* Net deposits */}
-      <div>
-        <div className="eyebrow" style={{ marginBottom: 4 }}>Net Deposits</div>
-        {editND ? (
-          <div>
-            <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 6 }}>Set current net deposits</div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input className="input" value={ndDraft} onChange={e => setNDDraft(e.target.value)}
-                placeholder="e.g. 12500.00" autoFocus style={{ flex: 1, fontSize: 13 }}
-                onKeyDown={e => e.key === 'Enter' && saveND()} />
-              <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveND}>Save</button>
-              <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setEditND(false)}>✕</button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 26, fontWeight: 500, letterSpacing: '-0.025em', fontFamily: 'var(--mono)' }}>
-                {netDepositsEffective > 0 ? fmtCAD(netDepositsEffective) : <span style={{ color: 'var(--ink-mute)' }}>—</span>}
-              </span>
-              <button onClick={() => { setNDDraft(String(Math.round(netDepositsEffective))); setEditND(true); }}
-                style={{ fontSize: 11, color: 'var(--ink-mute)', background: 'none', border: 'none',
-                  cursor: 'pointer', padding: 0, textDecoration: 'underline dotted' }}>
-                Edit
-              </button>
-            </div>
-            {hasNdOverride && (
-              <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 3, display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-                <Icon name="sparkle" size={10} />
-                Manual · txs suggest {fmtCAD(netDepositsRaw)}
-                <button onClick={onResetND}
-                  style={{ fontSize: 10, color: 'var(--accent-ink)', background: 'none',
-                    border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-                  Reset
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Market value */}
-      {hasMV && !editMV && (
-        <div style={{ padding: 12, borderRadius: 10, background: 'var(--card-surface)', border: '1px solid var(--line)' }}>
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Market Value</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em', fontFamily: 'var(--mono)' }}>
-              {fmtCAD(account.marketValue!)}
-            </span>
-            {gain != null && (
-              <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'var(--mono)',
-                color: isUp ? 'oklch(48% 0.17 160)' : 'var(--danger)' }}>
-                {isUp ? '+' : ''}{fmtCAD(gain)}
-                {gainPct != null && <span style={{ fontWeight: 400, opacity: 0.75 }}> ({gainPct.toFixed(1)}%)</span>}
-              </span>
-            )}
-          </div>
-          <button onClick={() => { setMVDraft(String(account.marketValue)); setEditMV(true); }}
-            style={{ fontSize: 11, color: 'var(--ink-mute)', background: 'none', border: 'none',
-              cursor: 'pointer', marginTop: 5, padding: 0, textDecoration: 'underline dotted' }}>
-            Update value
-          </button>
-        </div>
-      )}
-
-      {!hasMV && !editMV && (
-        <button className="btn btn-ghost" style={{ fontSize: 12, justifyContent: 'flex-start' }}
-          onClick={() => { setMVDraft(''); setEditMV(true); }}>
-          <Icon name="plus" size={12} />Add market value
-        </button>
-      )}
-
-      {editMV && (
-        <div>
-          <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 6 }}>Current market value</div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input className="input" value={mvDraft} onChange={e => setMVDraft(e.target.value)}
-              placeholder="e.g. 1420.50" autoFocus style={{ flex: 1, fontSize: 13 }}
-              onKeyDown={e => e.key === 'Enter' && saveMV()} />
-            <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={saveMV}>Save</button>
-            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setEditMV(false)}>✕</button>
-          </div>
-        </div>
-      )}
-
-      {/* Contribution room */}
-      {!!account.roomLeft && (
-        <div style={{ marginTop: 'auto', paddingTop: 10, borderTop: '1px solid var(--line)',
-          fontSize: 11, color: 'var(--ink-mute)' }}>
-          Contribution room:{' '}
-          <span style={{ color: 'var(--ink-soft)', fontFamily: 'var(--mono)' }}>
-            {fmtCAD(account.roomLeft)}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Section divider ───────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Section divider Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function SIDivider({ icon, label }: { icon: string; label: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
@@ -579,36 +413,30 @@ function SIDivider({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Main page Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 export function SavingsInvestmentsPage() {
   const txs = useQuery(() => db.transactions.toArray(), []) ?? [];
 
-  // Persisted state — loaded from db.settings on mount
-  const [goals,                setGoalsRaw]                = useState<SavingsGoal[]>(SI_GOALS_DEFAULT);
-  const [accounts,             setAccountsRaw]             = useState<InvestmentAccount[]>(SI_ACCOUNTS_DEFAULT);
-  const [savingsOverride,      setSavingsOverrideRaw]      = useState<number | null>(null);
-  const [savingsOverrideBase,  setSavingsOverrideBaseRaw]  = useState(0);
-  const [flexBalance,          setFlexBalanceRaw]          = useState(0);
-  const [ndOverrides,          setNdOverridesRaw]          = useState<Record<string, { value: number; base: number }>>({});
-  const [showFlex,             setShowFlexRaw]             = useState(true);
-  const [settingsLoaded,       setSettingsLoaded]          = useState(false);
+  // Persisted state Ã¢â‚¬â€ loaded from db.settings on mount
+  const [goals,               setGoalsRaw]               = useState<SavingsGoal[]>(SI_GOALS_DEFAULT);
+  const [savingsOverride,     setSavingsOverrideRaw]     = useState<number | null>(null);
+  const [savingsOverrideBase, setSavingsOverrideBaseRaw] = useState(0);
+  const [flexBalance,         setFlexBalanceRaw]         = useState(0);
+  const [showFlex,            setShowFlexRaw]            = useState(true);
+  const [settingsLoaded,      setSettingsLoaded]         = useState(false);
 
   useEffect(() => {
     Promise.all([
       db.settings.get('si_goals'),
-      db.settings.get('si_accounts'),
       db.settings.get('si_savings_override'),
       db.settings.get('si_savings_override_base'),
       db.settings.get('si_flex_balance'),
-      db.settings.get('si_nd_overrides'),
       db.settings.get('si_show_flex'),
-    ]).then(([g, a, so, sob, fb, ndo, sf]) => {
+    ]).then(([g, so, sob, fb, sf]) => {
       if (g)  setGoalsRaw(g.value as SavingsGoal[]);
-      if (a)  setAccountsRaw(a.value as InvestmentAccount[]);
       setSavingsOverrideRaw(so ? (so.value as number | null) : null);
       setSavingsOverrideBaseRaw(sob ? (sob.value as number) : 0);
       if (fb) setFlexBalanceRaw(fb.value as number ?? 0);
-      if (ndo) setNdOverridesRaw(ndo.value as Record<string, { value: number; base: number }>);
       if (sf) setShowFlexRaw(sf.value as boolean);
       setSettingsLoaded(true);
     });
@@ -623,12 +451,8 @@ export function SavingsInvestmentsPage() {
     setGoalsRaw(next);
     db.settings.put({ key: 'si_goals', value: next });
   }
-  function setAccounts(next: InvestmentAccount[]) {
-    setAccountsRaw(next);
-    db.settings.put({ key: 'si_accounts', value: next });
-  }
 
-  // All savings transactions — cumulative, no month filter
+  // All savings transactions Ã¢â‚¬â€ cumulative, no month filter
   const savingsTxsAll = useMemo(() =>
     txs.filter(t => t.type === 'savings' && !t.hidden)
        .sort((a, b) => b.date.localeCompare(a.date)),
@@ -662,40 +486,7 @@ export function SavingsInvestmentsPage() {
     setEditingBalance(false);
   };
 
-  // All investment transactions — cumulative, no month filter
-  const investTxsAll = useMemo(() =>
-    txs.filter(t => t.type === 'investment' && !t.hidden)
-       .sort((a, b) => b.date.localeCompare(a.date)),
-  [txs]);
-
-  const getNetDepositsRaw = (id: string) =>
-    investTxsAll.filter(t => t.investmentAccount === id).reduce((s, t) => s + t.amount, 0);
-
-  // Delta tracking for per-account net deposits overrides
-  const getEffectiveNetDeposits = (id: string) => {
-    const raw = getNetDepositsRaw(id);
-    const ov = ndOverrides[id];
-    return ov ? ov.value + (raw - ov.base) : raw;
-  };
-
-  function setNdOverride(id: string, value: number, base: number) {
-    const next = { ...ndOverrides, [id]: { value, base } };
-    setNdOverridesRaw(next);
-    db.settings.put({ key: 'si_nd_overrides', value: next });
-  }
-
-  function resetNdOverride(id: string) {
-    const next = { ...ndOverrides };
-    delete next[id];
-    setNdOverridesRaw(next);
-    db.settings.put({ key: 'si_nd_overrides', value: next });
-  }
-
-  const totalNetDeposits = useMemo(() =>
-    accounts.reduce((s, a) => s + getEffectiveNetDeposits(a.id), 0),
-  [accounts, investTxsAll, ndOverrides]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Flex account surplus — always current month, not time-filtered
+  // Flex account surplus Ã¢â‚¬â€ always current month, not time-filtered
   const currentMonth = currentMonthKey();
   const thisMoSurplus = useMemo(() => {
     const monthTxs = txsInMonth(txs, currentMonth);
@@ -802,33 +593,10 @@ export function SavingsInvestmentsPage() {
     setShowAddGoal(false);
   };
 
-  // Account mutations
-  const updateMV      = (id: string, val: number) =>
-    setAccounts(accounts.map(a => a.id === id ? { ...a, marketValue: val } : a));
-  const removeAccount = (id: string) =>
-    setAccounts(accounts.filter(a => a.id !== id));
-
-  const [showAddAccount,        setShowAddAccount]        = useState(false);
-  const [newAccountName,        setNewAccountName]        = useState('');
-  const [newAccountInstitution, setNewAccountInstitution] = useState('');
-
-  const addAccount = () => {
-    if (!newAccountName.trim()) return;
-    setAccounts([...accounts, {
-      id: 'acct-' + Date.now(),
-      name: newAccountName.trim().toUpperCase(),
-      institution: newAccountInstitution.trim(),
-      marketValue: null,
-    }]);
-    setNewAccountName('');
-    setNewAccountInstitution('');
-    setShowAddAccount(false);
-  };
-
   if (!settingsLoaded) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--ink-mute)', fontSize: 13 }}>
-        Loading…
+        LoadingÃ¢â‚¬Â¦
       </div>
     );
   }
@@ -836,14 +604,14 @@ export function SavingsInvestmentsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1040 }}>
 
-      {/* ── Page header ─────────────────────────────────────── */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ Page header Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
       <div>
         <div className="eyebrow" style={{ marginBottom: 6 }}>Wealth</div>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>Savings &amp; Investments</div>
+            <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>Savings</div>
             <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4, maxWidth: 560 }}>
-              Current snapshot — partition your savings across goals · track investment accounts · surplus flows through the Flex buffer.
+              Current snapshot Ã¢â‚¬â€ partition your savings across goals Ã‚Â· surplus flows through the Flex buffer.
             </div>
           </div>
           <button className="btn btn-ghost" style={{ fontSize: 11, flexShrink: 0, marginTop: 4 }}
@@ -854,11 +622,9 @@ export function SavingsInvestmentsPage() {
         </div>
       </div>
 
-      {/* ── Flex Account ─────────────────────────────────────── */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ Flex Account Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
       {showFlex && <FlexCard goals={goals} flexBalance={flexBalance} thisMoSurplus={thisMoSurplus} currentMonth={currentMonth} />}
 
-      {/* ── SAVINGS section ──────────────────────────────────── */}
-      <SIDivider icon="download" label="Savings" />
 
       {/* Balance + partition card */}
       <div className="glass" style={{ padding: 24 }}>
@@ -911,7 +677,7 @@ export function SavingsInvestmentsPage() {
           </div>
         </div>
 
-        {/* Active goals — allocation plan for new savings */}
+        {/* Active goals Ã¢â‚¬â€ allocation plan for new savings */}
         {(() => {
           const activeGoals = goals.filter(g => !g.locked);
           return activeGoals.length > 0 ? (
@@ -919,10 +685,10 @@ export function SavingsInvestmentsPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                 <div style={{ fontSize: 12, color: freeBalance < 0 ? 'var(--danger)' : 'var(--ink-soft)' }}>
                   {freeBalance > 0
-                    ? `Distributing ${fmtCAD(freeBalance)} · drag to rebalance`
+                    ? `Distributing ${fmtCAD(freeBalance)} Ã‚Â· drag to rebalance`
                     : freeBalance < 0
                       ? `Locked goals exceed balance by ${fmtCAD(Math.abs(freeBalance))}`
-                      : 'Allocation plan — drag to set % for new savings'}
+                      : 'Allocation plan Ã¢â‚¬â€ drag to set % for new savings'}
                 </div>
                 {freeBalance < 0 && (
                   <span style={{ fontSize: 11, color: 'var(--danger)', fontStyle: 'italic' }}>
@@ -931,7 +697,7 @@ export function SavingsInvestmentsPage() {
                 )}
                 {freeBalance === 0 && (
                   <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic' }}>
-                    No free balance yet — percentages shown
+                    No free balance yet Ã¢â‚¬â€ percentages shown
                   </span>
                 )}
               </div>
@@ -971,7 +737,7 @@ export function SavingsInvestmentsPage() {
           ) : (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--ink-mute)' }}>
               <div style={{ fontSize: 13, marginBottom: 10 }}>
-                {goals.some(g => g.locked) ? 'All goals completed — add a new one to keep saving.' : 'No goals yet.'}
+                {goals.some(g => g.locked) ? 'All goals completed Ã¢â‚¬â€ add a new one to keep saving.' : 'No goals yet.'}
               </div>
               <button className="btn btn-primary" onClick={() => setShowAddGoal(true)}>
                 <Icon name="plus" size={12} />Add goal
@@ -995,13 +761,13 @@ export function SavingsInvestmentsPage() {
         })()}
       </div>
 
-      {/* Completed Goals — locked goals shown separately */}
+      {/* Completed Goals Ã¢â‚¬â€ locked goals shown separately */}
       {goals.some(g => g.locked) && (
         <>
           <SIDivider icon="check" label="Completed Goals" />
           <div className="glass" style={{ padding: 20 }}>
             <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 14 }}>
-              Value locked in · unlock to re-enter the active savings pool
+              Value locked in Ã‚Â· unlock to re-enter the active savings pool
             </div>
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))' }}>
               {goals.filter(g => g.locked).map(g => (
@@ -1017,12 +783,12 @@ export function SavingsInvestmentsPage() {
         </>
       )}
 
-      {/* Savings history table — all time */}
+      {/* Savings history table Ã¢â‚¬â€ all time */}
       <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--line)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 500, fontSize: 14 }}>Savings history</div>
-          <span className="chip">Auto-detected from "Savings Transfer" category · all time</span>
+          <span className="chip">Auto-detected from "Savings Transfer" category Ã‚Â· all time</span>
         </div>
         <table className="data">
           <thead>
@@ -1047,137 +813,9 @@ export function SavingsInvestmentsPage() {
                 <td style={{ textAlign: 'right', fontWeight: 500, fontFamily: 'var(--mono)', color: 'oklch(48% 0.17 165)' }}>
                   +{fmtCAD(t.amount)}
                 </td>
-                <td style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{t.notes || '—'}</td>
+                <td style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{t.notes || 'Ã¢â‚¬â€'}</td>
               </tr>
             ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── INVESTMENTS section ───────────────────────────────── */}
-      <SIDivider icon="chart_line" label="Investments" />
-
-      {/* Investments header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Total net deposits</div>
-          <div style={{ fontSize: 32, fontWeight: 500, letterSpacing: '-0.025em', fontFamily: 'var(--mono)' }}>
-            {fmtCAD(totalNetDeposits)}
-          </div>
-        </div>
-        <button className="btn btn-ghost" style={{ fontSize: 12, flexShrink: 0 }}
-          onClick={() => setShowAddAccount(true)}>
-          <Icon name="plus" size={12} />Add account
-        </button>
-      </div>
-
-      {/* Account cards */}
-      {accounts.length > 0 ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
-          {accounts.map(a => (
-            <InvestAccountCard
-              key={a.id}
-              account={a}
-              netDepositsEffective={getEffectiveNetDeposits(a.id)}
-              netDepositsRaw={getNetDepositsRaw(a.id)}
-              hasNdOverride={!!ndOverrides[a.id]}
-              onUpdateMV={val => updateMV(a.id, val)}
-              onUpdateND={(val, base) => setNdOverride(a.id, val, base)}
-              onResetND={() => resetNdOverride(a.id)}
-              onRemove={() => removeAccount(a.id)} />
-          ))}
-          {showAddAccount && (
-            <div className="glass" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontWeight: 500, fontSize: 13 }}>New account</div>
-              <input className="input" placeholder="Account name (e.g. TFSA)" value={newAccountName}
-                onChange={e => setNewAccountName(e.target.value)} style={{ fontSize: 12 }} autoFocus />
-              <input className="input" placeholder="Institution (e.g. Questrade)" value={newAccountInstitution}
-                onChange={e => setNewAccountInstitution(e.target.value)} style={{ fontSize: 12 }}
-                onKeyDown={e => e.key === 'Enter' && addAccount()} />
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={addAccount}>Add</button>
-                <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => { setShowAddAccount(false); setNewAccountName(''); setNewAccountInstitution(''); }}>Cancel</button>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="glass" style={{ padding: 28 }}>
-          {showAddAccount ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontWeight: 500, fontSize: 13 }}>New account</div>
-              <input className="input" placeholder="Account name (e.g. TFSA)" value={newAccountName}
-                onChange={e => setNewAccountName(e.target.value)} style={{ fontSize: 12 }} autoFocus />
-              <input className="input" placeholder="Institution (e.g. Questrade)" value={newAccountInstitution}
-                onChange={e => setNewAccountInstitution(e.target.value)} style={{ fontSize: 12 }}
-                onKeyDown={e => e.key === 'Enter' && addAccount()} />
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={addAccount}>Add</button>
-                <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => { setShowAddAccount(false); setNewAccountName(''); setNewAccountInstitution(''); }}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', color: 'var(--ink-mute)' }}>
-              <div style={{ fontSize: 13, marginBottom: 10 }}>
-                No investment accounts. Add your TFSA, RRSP, or any other account.
-              </div>
-              <button className="btn btn-primary" onClick={() => setShowAddAccount(true)}>
-                <Icon name="plus" size={12} />Add account
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Investment history table — all time */}
-      <div className="glass" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--line)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 500, fontSize: 14 }}>Investment history</div>
-          <span className="chip">From "Investment" category · transfer type · all time</span>
-        </div>
-        <table className="data">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th style={{ width: 80 }}>Account</th>
-              <th>Description</th>
-              <th style={{ textAlign: 'right', width: 130 }}>Amount deposited</th>
-            </tr>
-          </thead>
-          <tbody>
-            {investTxsAll.length === 0 ? (
-              <tr>
-                <td colSpan={4} style={{ textAlign: 'center', padding: 32, color: 'var(--ink-mute)', fontSize: 13 }}>
-                  No investment transactions yet. Tag transfers with the "Investment" category and set the account field.
-                </td>
-              </tr>
-            ) : investTxsAll.map(t => {
-              const ACCT_COLOR: Record<string, string> = {
-                tfsa: 'oklch(52% 0.18 278)',
-                rrsp: 'oklch(52% 0.17 198)',
-                fhsa: 'oklch(54% 0.17 158)',
-              };
-              const ac = ACCT_COLOR[t.investmentAccount ?? ''] ?? 'var(--ink-soft)';
-              return (
-                <tr key={t.id}>
-                  <td style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-soft)' }}>{t.date}</td>
-                  <td>
-                    <span className="chip" style={{
-                      background: `color-mix(in oklab, ${ac}, transparent 86%)`,
-                      borderColor: `color-mix(in oklab, ${ac}, transparent 68%)`,
-                      color: `color-mix(in oklab, ${ac}, black 22%)`,
-                    }}>
-                      {(t.investmentAccount ?? '').toUpperCase()}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: 13 }}>{t.merchantRaw}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 500, fontFamily: 'var(--mono)', color: 'oklch(48% 0.17 165)' }}>
-                    +{fmtCAD(t.amount)}
-                  </td>
-                </tr>
-              );
-            })}
           </tbody>
         </table>
       </div>

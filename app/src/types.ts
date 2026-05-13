@@ -31,6 +31,7 @@ export interface Transaction {
   owner?: string | null;
   envelopeId?: string | null;
   investmentAccount?: string | null;
+  holdingLogged?: boolean;
   dedupeKey: string;
   rawRow?: Record<string, unknown>;
 }
@@ -122,8 +123,14 @@ export interface InvestmentAccount {
   id: string;
   name: string;
   institution: string;
-  marketValue: number | null;
   roomLeft?: number;
+}
+
+export interface Holding {
+  id: string;       // "{accountId}__{ticker}"
+  accountId: string;
+  ticker: string;
+  shares: number;
 }
 
 export type AmountOp = '>' | '<' | '>=' | '<=' | '=';

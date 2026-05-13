@@ -41,6 +41,7 @@ export const Icon: FC<{ name: string; size?: number; stroke?: number }> = ({ nam
     moon: <><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></>,
     piggybank: <><ellipse cx="12" cy="13" rx="7.5" ry="6.5"/><path d="M12 6.5V4.5"/><path d="M10 4.5h4"/><path d="M19.5 11c1.2.7 2 2 2 3.5"/><path d="M8.5 19l-1 2.5"/><path d="M15.5 19l1 2.5"/><circle cx="9.5" cy="12" r="1" fill="currentColor" stroke="none"/></>,
     chart_line: <><polyline points="3 17 9 11 13 13 21 5"/><path d="M21 5h-5M21 5v5"/></>,
+    refresh: <><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></>,
   };
   return (
     <svg

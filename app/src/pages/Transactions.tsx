@@ -6,6 +6,7 @@ import { db } from '../db';
 import type { Bank, Category, InvestmentAccount, Person, Transaction, TxType } from '../types';
 import { SplitDialog } from '../components/SplitDialog';
 import { ContactPicker } from '../components/ContactPicker';
+import { InvestmentDetailsDialog } from '../components/InvestmentDetailsDialog';
 import { recategorizeTransaction, undoRecategorize, type UndoData } from '../lib/recategorize';
 import { fmtCAD, monthKey, currentMonthKey } from '../lib/money';
 import { Icon, BankLogo, CatSwatch, ConfBar } from '../components/Primitives';
@@ -69,6 +70,8 @@ export function TransactionsPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [splitTx, setSplitTx] = useState<Transaction | null>(null);
+  const [holdingDialogTx, setHoldingDialogTx] = useState<Transaction | null>(null);
+  const [holdingDialogIsEdit, setHoldingDialogIsEdit] = useState(false);
   const [flash, setFlash] = useState<{ text: string; undo: UndoData | null } | null>(null);
   const [showAddTx, setShowAddTx] = useState(false);
   const [owedTx, setOwedTx] = useState<Transaction | null>(null);
@@ -140,6 +143,9 @@ export function TransactionsPage() {
 
   const spend = useMemo(() => visibleTxs.filter(t => t.type === 'spend').reduce((s, t) => s + t.amount, 0), [visibleTxs]);
   const income = useMemo(() => visibleTxs.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0), [visibleTxs]);
+  const pendingInvestmentTxs = useMemo(() =>
+    visibleTxs.filter(t => t.type === 'investment' && !t.holdingLogged),
+  [visibleTxs]);
   const outstandingTotal = useMemo(() => outstandingEntries.reduce((s, e) => s + e.amount, 0), [outstandingEntries]);
 
   function requestCategoryChange(tx: Transaction, newCatId: string | null) {
@@ -168,8 +174,9 @@ export function TransactionsPage() {
   async function onTypeChange(tx: Transaction, newType: TxType) {
     const patch: Partial<Transaction> = { type: newType };
     if (NON_CATEGORIZED_TYPES.includes(newType)) patch.categoryId = null;
-    if (newType !== 'investment') patch.investmentAccount = null;
+    if (newType !== 'investment') { patch.investmentAccount = null; patch.holdingLogged = false; }
     await db.transactions.update(tx.id, patch);
+    if (newType === 'investment') setHoldingDialogTx({ ...tx, ...patch });
   }
 
   async function onInvestmentAccountChange(tx: Transaction, accountId: string | null) {
@@ -276,6 +283,27 @@ export function TransactionsPage() {
         ))}
       </div>
 
+      {pendingInvestmentTxs.length > 0 && (
+        <div style={{
+          padding: '10px 16px', borderRadius: 10,
+          background: 'color-mix(in oklab, oklch(65% 0.15 60), transparent 85%)',
+          border: '1px solid color-mix(in oklab, oklch(65% 0.15 60), transparent 55%)',
+          color: 'oklch(38% 0.12 60)',
+          fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="chart_line" size={13} />
+            <span>
+              {pendingInvestmentTxs.length} investment purchase{pendingInvestmentTxs.length > 1 ? 's' : ''} {pendingInvestmentTxs.length > 1 ? 'need' : 'needs'} holdings details
+            </span>
+          </div>
+          <button className="btn btn-ghost" style={{ fontSize: 11, flexShrink: 0 }}
+            onClick={() => setHoldingDialogTx(pendingInvestmentTxs[0])}>
+            Review
+          </button>
+        </div>
+      )}
+
       {flash && (
         <div style={{ padding: '10px 16px', borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)', color: 'var(--accent-ink)', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <span>{flash.text}</span>
@@ -379,6 +407,8 @@ export function TransactionsPage() {
                   onSaveNote={onSaveNote}
                   onMarkOwed={() => { setOwedTx(t); setOwedName(''); }}
                   onMarkReviewed={onMarkReviewed}
+                  onOpenHoldingDialog={t => { setHoldingDialogIsEdit(false); setHoldingDialogTx(t); }}
+                  onOpenEditHoldingDialog={t => { setHoldingDialogIsEdit(true); setHoldingDialogTx(t); }}
                 />
               ))}
             </tbody>
@@ -445,6 +475,17 @@ export function TransactionsPage() {
         </div>
       )}
 
+      {/* Investment details dialog */}
+      {holdingDialogTx && (
+        <InvestmentDetailsDialog
+          tx={holdingDialogTx}
+          pendingTxs={holdingDialogIsEdit ? [] : pendingInvestmentTxs}
+          isEdit={holdingDialogIsEdit}
+          onClose={() => { setHoldingDialogTx(null); setHoldingDialogIsEdit(false); }}
+          onNext={next => { setHoldingDialogTx(next); if (!next) setHoldingDialogIsEdit(false); }}
+        />
+      )}
+
       {/* Add transaction modal */}
       {showAddTx && <AddTxModal categories={categories} people={people} onClose={() => setShowAddTx(false)} />}
     </div>
@@ -453,7 +494,7 @@ export function TransactionsPage() {
 
 function TxRow({
   tx, category, categories, people, investAccounts, confidenceThreshold, isOwed,
-  onCategoryChange, onTypeChange, onInvestmentAccountChange, onOwnerChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed, onMarkReviewed,
+  onCategoryChange, onTypeChange, onInvestmentAccountChange, onOwnerChange, onSplit, onHide, onDelete, onSaveNote, onMarkOwed, onMarkReviewed, onOpenHoldingDialog, onOpenEditHoldingDialog,
 }: {
   tx: Transaction;
   category: Category | undefined;
@@ -472,6 +513,8 @@ function TxRow({
   onSaveNote: (tx: Transaction, note: string) => void;
   onMarkOwed: () => void;
   onMarkReviewed: (tx: Transaction) => void;
+  onOpenHoldingDialog: (tx: Transaction) => void;
+  onOpenEditHoldingDialog: (tx: Transaction) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ right: number; top: number } | null>(null);
@@ -666,19 +709,51 @@ function TxRow({
               </select>
             </div>
           ) : tx.type === 'investment' ? (
-            <div style={{ position: 'relative', display: 'inline-flex' }}>
-              <span className="chip" style={{ color: tx.investmentAccount ? 'var(--ink-soft)' : 'var(--ink-mute)' }}>
-                {tx.investmentAccount?.toUpperCase() ?? 'No account'}
-                <Icon name="chevron_down" size={10} />
-              </span>
-              <select
-                value={tx.investmentAccount ?? ''}
-                onChange={e => onInvestmentAccountChange(tx, e.target.value || null)}
-                style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
-              >
-                <option value="">No account</option>
-                {investAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
+            <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <span className="chip" style={{ color: tx.investmentAccount ? 'var(--ink-soft)' : 'var(--ink-mute)' }}>
+                  {tx.investmentAccount
+                    ? (investAccounts.find(a => a.id === tx.investmentAccount)?.name ?? tx.investmentAccount.toUpperCase())
+                    : 'No account'}
+                  <Icon name="chevron_down" size={10} />
+                </span>
+                <select
+                  value={tx.investmentAccount ?? ''}
+                  onChange={e => onInvestmentAccountChange(tx, e.target.value || null)}
+                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }}
+                >
+                  <option value="">No account</option>
+                  {investAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </div>
+              {!tx.holdingLogged ? (
+                <button
+                  onClick={() => onOpenHoldingDialog(tx)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 5,
+                    background: 'color-mix(in oklab, oklch(65% 0.15 60), transparent 82%)',
+                    border: '1px solid color-mix(in oklab, oklch(65% 0.15 60), transparent 52%)',
+                    color: 'oklch(38% 0.12 60)', cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'oklch(60% 0.15 60)', flexShrink: 0 }} />
+                  Add details
+                </button>
+              ) : (
+                <button
+                  onClick={() => onOpenEditHoldingDialog(tx)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 5,
+                    background: 'none', border: '1px solid var(--line-strong)',
+                    color: 'var(--ink-mute)', cursor: 'pointer',
+                  }}
+                >
+                  <Icon name="edit" size={9} />
+                  Edit
+                </button>
+              )}
             </div>
           ) : <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>}
         </td>
