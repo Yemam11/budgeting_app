@@ -1102,13 +1102,30 @@ export function SavingsInvestmentsPage() {
           )}
         </div>
       ) : (
-        <div className="glass" style={{ padding: 28, textAlign: 'center', color: 'var(--ink-mute)' }}>
-          <div style={{ fontSize: 13, marginBottom: 10 }}>
-            No investment accounts. Add your TFSA, RRSP, or any other account.
-          </div>
-          <button className="btn btn-primary" onClick={() => setShowAddAccount(true)}>
-            <Icon name="plus" size={12} />Add account
-          </button>
+        <div className="glass" style={{ padding: 28 }}>
+          {showAddAccount ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontWeight: 500, fontSize: 13 }}>New account</div>
+              <input className="input" placeholder="Account name (e.g. TFSA)" value={newAccountName}
+                onChange={e => setNewAccountName(e.target.value)} style={{ fontSize: 12 }} autoFocus />
+              <input className="input" placeholder="Institution (e.g. Questrade)" value={newAccountInstitution}
+                onChange={e => setNewAccountInstitution(e.target.value)} style={{ fontSize: 12 }}
+                onKeyDown={e => e.key === 'Enter' && addAccount()} />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={addAccount}>Add</button>
+                <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => { setShowAddAccount(false); setNewAccountName(''); setNewAccountInstitution(''); }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', color: 'var(--ink-mute)' }}>
+              <div style={{ fontSize: 13, marginBottom: 10 }}>
+                No investment accounts. Add your TFSA, RRSP, or any other account.
+              </div>
+              <button className="btn btn-primary" onClick={() => setShowAddAccount(true)}>
+                <Icon name="plus" size={12} />Add account
+              </button>
+            </div>
+          )}
         </div>
       )}
 
