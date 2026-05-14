@@ -1,13 +1,25 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
 import {
   fmtCAD, fmtCompact, currentMonthKey, prevMonth, lastNMonths, monthKey,
   effectiveTxsInMonth, categoryTotals, totalSpend, totalIncome,
 } from '../lib/money';
-import type { Category } from '../types';
-import { Icon, BankLogo, CatSwatch, Delta, ConfBar } from '../components/Primitives';
-import { CashflowBars, Donut, StackedBars, Sankey, ProgressRing } from '../components/Charts';
+import type { SavingsGoal, InvestmentAccount, Holding } from '../types';
+import { Icon, Delta } from '../components/Primitives';
+import { CashflowBars, Sankey, ProgressRing } from '../components/Charts';
+
+const SI_ACCOUNTS_DEFAULT: InvestmentAccount[] = [
+  { id: 'tfsa', name: 'TFSA', institution: 'Questrade', roomLeft: 47500 },
+  { id: 'rrsp', name: 'RRSP', institution: 'Questrade' },
+  { id: 'fhsa', name: 'FHSA', institution: 'Questrade', roomLeft: 7400 },
+];
+
+const SI_GOALS_DEFAULT: SavingsGoal[] = [
+  { id: 'sg1', name: 'House Down Payment', target: 50000, pct: 50, color: 'oklch(58% 0.18 250)' },
+  { id: 'sg2', name: 'New Car',            target: 20000, pct: 30, color: 'oklch(62% 0.16 155)' },
+  { id: 'sg3', name: 'Emergency Fund',     target: 15000, pct: 20, color: 'oklch(66% 0.15 45)'  },
+];
 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const monthAbbr = (k: string) => MONTH_ABBR[parseInt(k.slice(5, 7), 10) - 1];
@@ -19,16 +31,86 @@ const monthFull = (k: string) => {
 interface Props { onNavigate?: (tab: string) => void; userName?: string }
 
 export function DashboardPage({ onNavigate, userName }: Props) {
-  const txs = useQuery(() => db.transactions.toArray(), []) ?? [];
+  // ── Core data ─────────────────────────────────────────────────────
+  const txs        = useQuery(() => db.transactions.toArray(), []) ?? [];
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
-  const budgets = useQuery(() => db.budgets.toArray(), []) ?? [];
+  const budgets    = useQuery(() => db.budgets.toArray(), []) ?? [];
   const thresholdSetting = useQuery(() => db.settings.get('confidenceThreshold'), []);
   const confidenceThreshold: number = (thresholdSetting?.value as number ?? 0.9);
+  void confidenceThreshold;
 
-  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
+  // ── Net worth data ─────────────────────────────────────────────────
+  const savingsOvSetting       = useQuery(() => db.settings.get('si_savings_override'), []);
+  const savingsOvBaseSetting   = useQuery(() => db.settings.get('si_savings_override_base'), []);
+  const flexBalanceSetting     = useQuery(() => db.settings.get('si_flex_balance'), []);
+  const siGoalsSetting         = useQuery(() => db.settings.get('si_goals'), []);
+  const mvOverridesSetting     = useQuery(() => db.settings.get('si_mv_overrides'), []);
+  const sharesOverridesSetting = useQuery(() => db.settings.get('si_shares_overrides'), []);
+  const siAccountsSetting      = useQuery(() => db.settings.get('si_accounts'), []);
+  const holdingsData           = useQuery(() => db.holdings.toArray(), []) ?? [];
+
+  const [nwPrices, setNwPrices] = useState<Record<string, number | null>>({});
+
+  const tickerKey = useMemo(() =>
+    (holdingsData as Holding[]).map(h => h.ticker).sort().join(','),
+  [holdingsData]);
+
+  useEffect(() => {
+    if (!tickerKey) return;
+    fetch(`/api/prices?tickers=${encodeURIComponent(tickerKey)}`)
+      .then(r => r.json())
+      .then(d => setNwPrices(d.prices ?? {}))
+      .catch(() => {});
+  }, [tickerKey]);
+
+  // ── Derived NW values ──────────────────────────────────────────────
+  const goals: SavingsGoal[] = useMemo(() =>
+    (siGoalsSetting?.value as SavingsGoal[] | undefined) ?? SI_GOALS_DEFAULT,
+  [siGoalsSetting]);
+
+  const savingsBalance = useMemo(() => {
+    const fromTxs = txs.filter(t => t.type === 'savings' && !t.hidden).reduce((s, t) => s + t.amount, 0);
+    const ov   = savingsOvSetting?.value as number | null ?? null;
+    const base = savingsOvBaseSetting?.value as number ?? 0;
+    return ov !== null ? ov + (fromTxs - base) : fromTxs;
+  }, [txs, savingsOvSetting, savingsOvBaseSetting]);
+
+  const flexBalance = (flexBalanceSetting?.value as number | undefined) ?? 0;
+
+  const investMV = useMemo(() => {
+    const accounts  = (siAccountsSetting?.value as InvestmentAccount[] | undefined) ?? SI_ACCOUNTS_DEFAULT;
+    const mvOv      = (mvOverridesSetting?.value as Record<string, { value: number; base: number }> | undefined) ?? {};
+    const sharesOv  = (sharesOverridesSetting?.value as Record<string, { value: number; base: number }> | undefined) ?? {};
+    const investTxs = txs.filter(t => t.type === 'investment' && !t.hidden);
+    return accounts.reduce((total, acct) => {
+      const raw = investTxs.filter(t => t.investmentAccount === acct.id).reduce((s, t) => s + t.amount, 0);
+      const computed = (holdingsData as Holding[])
+        .filter(h => h.accountId === acct.id)
+        .reduce((s, h) => {
+          const shOv   = sharesOv[h.id];
+          const shares = shOv ? shOv.value + (h.shares - shOv.base) : h.shares;
+          return s + shares * (nwPrices[h.ticker] ?? 0);
+        }, 0);
+      const mvEntry = mvOv[acct.id];
+      const mv      = mvEntry ? mvEntry.value + (computed - mvEntry.base) : computed;
+      return total + (mv > 0 ? mv : raw);
+    }, 0);
+  }, [txs, siAccountsSetting, mvOverridesSetting, sharesOverridesSetting, holdingsData, nwPrices]);
+
+  const netWorth = savingsBalance + investMV + flexBalance;
+
+  // ── UI state ──────────────────────────────────────────────────────
+  const [selectedMonth,    setSelectedMonth]    = useState(currentMonthKey());
+  const [customFrom,       setCustomFrom]       = useState('');
+  const [customTo,         setCustomTo]         = useState('');
   const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [sankeyExpanded,   setSankeyExpanded]   = useState(false);
+  // Expanded-view pan/zoom state
+  const [exTx,    setExTx]    = useState(0);
+  const [exTy,    setExTy]    = useState(0);
+  const [exScale, setExScale] = useState(1);
+  const [exDrag,  setExDrag]  = useState<{ ox: number; oy: number; tx: number; ty: number } | null>(null);
+
   const hasCustomRange = !!(customFrom || customTo);
 
   const availableMonths = useMemo(() => {
@@ -37,68 +119,50 @@ export function DashboardPage({ onNavigate, userName }: Props) {
     return Array.from(set).sort().reverse();
   }, [txs]);
 
-  const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
+  const catMap    = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
   const budgetMap = useMemo(() => new Map(budgets.map(b => [b.categoryId, b.monthlyLimit])), [budgets]);
 
-  const thisMonth = selectedMonth;
+  const thisMonth    = selectedMonth;
   const prevMonthKey = prevMonth(thisMonth);
 
   const monthTxs = useMemo(() => {
     if (hasCustomRange) {
-      return txs.filter(t =>
-        (!customFrom || t.date >= customFrom) &&
-        (!customTo || t.date <= customTo)
-      );
+      return txs.filter(t => (!customFrom || t.date >= customFrom) && (!customTo || t.date <= customTo));
     }
     return effectiveTxsInMonth(txs, thisMonth);
   }, [txs, hasCustomRange, customFrom, customTo, thisMonth]);
   const prevMonthTxs = useMemo(() => effectiveTxsInMonth(txs, prevMonthKey), [txs, prevMonthKey]);
 
-  const totals = useMemo(() => categoryTotals(monthTxs), [monthTxs]);
-  const spend = totalSpend(monthTxs);
-  const income = totalIncome(monthTxs);
-  const net = income - spend;
-
-  const prevSpend = totalSpend(prevMonthTxs);
+  const totals     = useMemo(() => categoryTotals(monthTxs), [monthTxs]);
+  const spend      = totalSpend(monthTxs);
+  const income     = totalIncome(monthTxs);
+  const net        = income - spend;
+  const prevSpend  = totalSpend(prevMonthTxs);
   const prevIncome = totalIncome(prevMonthTxs);
-  const prevNet = prevIncome - prevSpend;
+  const prevNet    = prevIncome - prevSpend;
 
-  const spendDelta = prevSpend > 0 ? ((spend - prevSpend) / prevSpend) * 100 : 0;
-  const incomeDelta = prevIncome > 0 ? ((income - prevIncome) / prevIncome) * 100 : 0;
-  const netDelta = Math.abs(prevNet) > 0 ? ((net - prevNet) / Math.abs(prevNet)) * 100 : 0;
+  const spendDelta  = prevSpend > 0  ? ((spend  - prevSpend)  / prevSpend)         * 100 : 0;
+  const incomeDelta = prevIncome > 0 ? ((income - prevIncome) / prevIncome)         * 100 : 0;
+  const netDelta    = Math.abs(prevNet) > 0 ? ((net - prevNet) / Math.abs(prevNet)) * 100 : 0;
 
   const greeting = useMemo(() => {
     const h = new Date().getHours();
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   }, []);
 
-  // Donut: top categories this month
-  const donutData = useMemo(() =>
-    Array.from(totals.entries())
-      .filter(([, v]) => v > 0)
-      .map(([id, value]) => ({ label: catMap.get(id)?.name ?? 'Other', value, color: catMap.get(id)?.color ?? '#aaa' }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 7),
-    [totals, catMap],
-  );
-
-  // Weekly cashflow — last 12 weeks
+  // ── Cash-flow — last 3 months ending at selectedMonth ────────────
   const cashflowData = useMemo(() => {
-    const now = new Date();
-    return Array.from({ length: 12 }, (_, wi) => {
-      const weekOffset = 11 - wi;
-      const end = new Date(now);
-      end.setDate(end.getDate() - weekOffset * 7);
-      const start = new Date(end);
-      start.setDate(start.getDate() - 6);
-      const s = start.toISOString().slice(0, 10);
-      const e = end.toISOString().slice(0, 10);
-      const week = txs.filter(t => t.date >= s && t.date <= e);
-      return { label: `W${wi + 1}`, income: totalIncome(week), spend: totalSpend(week) };
-    });
-  }, [txs]);
+    const months: string[] = [];
+    let mk = selectedMonth;
+    for (let i = 0; i < 3; i++) { months.unshift(mk); mk = prevMonth(mk); }
+    return months.map(m => ({
+      label:  monthAbbr(m),
+      income: totalIncome(effectiveTxsInMonth(txs, m)),
+      spend:  totalSpend(effectiveTxsInMonth(txs, m)),
+    }));
+  }, [txs, selectedMonth]);
 
-  // Sankey
+  // ── Sankey ────────────────────────────────────────────────────────
   const sankeyInflows = useMemo(() => {
     const m = new Map<string, number>();
     for (const t of monthTxs) {
@@ -111,44 +175,38 @@ export function DashboardPage({ onNavigate, userName }: Props) {
   }, [monthTxs, catMap, income]);
 
   const sankeyOutflows = useMemo(() => {
-    const entries = Array.from(totals.entries()).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-    const top = entries.slice(0, 5).map(([id, value]) => ({
-      label: catMap.get(id)?.name ?? 'Other', value, color: catMap.get(id)?.color ?? '#aaa',
-    }));
-    const otherTotal = entries.slice(5).reduce((s, [, v]) => s + v, 0);
-    if (otherTotal > 0) top.push({ label: 'Other', value: otherTotal, color: 'oklch(65% 0.02 260)' });
-    return top;
-  }, [totals, catMap]);
+    const nodes: { label: string; value: number; color: string }[] = [];
 
-  // 6-month stacked bars
-  const sixMonths = useMemo(() => lastNMonths(6), []);
-  const topStackCats = useMemo(() => {
-    const acc = new Map<string, number>();
-    for (const mk of sixMonths) {
-      for (const [id, v] of categoryTotals(effectiveTxsInMonth(txs, mk)).entries()) {
-        acc.set(id, (acc.get(id) ?? 0) + v);
-      }
+    // All spend categories (no slice cap), filter zero values
+    for (const [id, value] of Array.from(totals.entries()).sort((a, b) => b[1] - a[1])) {
+      if (value < 1) continue;
+      nodes.push({ label: catMap.get(id)?.name ?? 'Other', value, color: catMap.get(id)?.color ?? 'oklch(65% 0.02 260)' });
     }
-    return Array.from(acc.entries())
-      .sort((a, b) => b[1] - a[1]).slice(0, 6)
-      .map(([id]) => catMap.get(id)).filter((c): c is Category => c !== undefined);
-  }, [txs, sixMonths, catMap]);
 
-  const stackedMonths = useMemo(() =>
-    sixMonths.map(mk => ({
-      label: monthAbbr(mk),
-      values: Object.fromEntries(categoryTotals(effectiveTxsInMonth(txs, mk))),
-    })),
-    [txs, sixMonths],
-  );
+    // Savings & investment outflows
+    const savingsOut = monthTxs.filter(t => t.type === 'savings' && !t.hidden).reduce((s, t) => s + t.amount, 0);
+    if (savingsOut >= 1) nodes.push({ label: 'Savings', value: savingsOut, color: 'oklch(58% 0.18 250)' });
 
-  // Budget burndown — pace markers relative to selected month
-  const today = new Date();
+    const investOut = monthTxs.filter(t => t.type === 'investment' && !t.hidden).reduce((s, t) => s + t.amount, 0);
+    if (investOut >= 1) nodes.push({ label: 'Invested', value: investOut, color: 'oklch(52% 0.18 278)' });
+
+    // Balance: add "Unallocated" node if income exceeds total tracked outflows
+    const totalTracked = nodes.reduce((s, n) => s + n.value, 0);
+    const unallocated  = income - totalTracked;
+    if (unallocated >= 50) nodes.push({ label: 'Unallocated', value: unallocated, color: 'oklch(62% 0.03 260)' });
+
+    return nodes;
+  }, [totals, catMap, monthTxs, income]);
+
+  const sankeyHeight = Math.max(300, sankeyOutflows.length * 42 + 60);
+
+  // ── Budget burn-down ──────────────────────────────────────────────
+  const today          = new Date();
   const isCurrentMonth = selectedMonth === currentMonthKey();
   const [selYear, selMonthNum] = selectedMonth.split('-').map(Number);
-  const dayOfMonth = isCurrentMonth ? today.getDate() : new Date(selYear, selMonthNum, 0).getDate();
+  const dayOfMonth  = isCurrentMonth ? today.getDate() : new Date(selYear, selMonthNum, 0).getDate();
   const daysInMonth = new Date(selYear, selMonthNum, 0).getDate();
-  const paceFrac = dayOfMonth / daysInMonth;
+  const paceFrac    = dayOfMonth / daysInMonth;
 
   const budgetRows = useMemo(() =>
     categories
@@ -160,23 +218,40 @@ export function DashboardPage({ onNavigate, userName }: Props) {
       })
       .sort((a, b) => b.pct - a.pct)
       .slice(0, 6),
-    [categories, budgetMap, totals],
-  );
+  [categories, budgetMap, totals]);
 
-  // Recent activity — scoped to selected month
-  const recentTxs = useMemo(() =>
-    monthTxs.filter(t => !t.hidden).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6),
-    [monthTxs],
-  );
+  // ── Savings summary ───────────────────────────────────────────────
+  const lockedTotal  = goals.filter(g => g.locked).reduce((s, g) => s + (g.lockedValue ?? 0), 0);
+  const freeBalance  = savingsBalance - lockedTotal;
+  const activePctSum = goals.filter(g => !g.locked).reduce((s, g) => s + g.pct, 0);
 
-  const needsReviewCount = useMemo(() =>
-    txs.filter(t => t.type === 'spend' && !t.hidden && t.categorySource !== 'user' && t.categoryConfidence < confidenceThreshold).length,
-    [txs, confidenceThreshold],
-  );
+  const avgMonthlySavings = useMemo(() => {
+    const months = lastNMonths(6);
+    const total  = months.reduce((s, mk) =>
+      s + txs.filter(t => t.type === 'savings' && !t.hidden && monthKey(t.date) === mk).reduce((ss, t) => ss + t.amount, 0),
+    0);
+    return total / 6;
+  }, [txs]);
+
+  // ── Expand overlay pan/zoom handlers ─────────────────────────────
+  const expandMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setExDrag({ ox: e.clientX, oy: e.clientY, tx: exTx, ty: exTy });
+  };
+  const expandMouseMove = (e: React.MouseEvent) => {
+    if (!exDrag) return;
+    setExTx(exDrag.tx + (e.clientX - exDrag.ox));
+    setExTy(exDrag.ty + (e.clientY - exDrag.oy));
+  };
+  const expandMouseUp   = () => setExDrag(null);
+  const expandWheel     = (e: React.WheelEvent) => {
+    e.preventDefault();
+    setExScale(s => Math.max(0.4, Math.min(4, s - e.deltaY * 0.001)));
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div className="eyebrow" style={{ marginBottom: 6 }}>Overview · {hasCustomRange ? 'Custom Time Period' : monthFull(thisMonth)}</div>
@@ -198,37 +273,23 @@ export function DashboardPage({ onNavigate, userName }: Props) {
           </div>
           {(showCustomPicker || hasCustomRange) ? (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type="date" className="btn btn-ghost"
-                style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
-                value={customFrom}
-                onChange={e => setCustomFrom(e.target.value)}
-                title="Start date"
-              />
+              <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customFrom} onChange={e => setCustomFrom(e.target.value)} title="Start date" />
               <span style={{ fontSize: 11, color: 'var(--ink-mute)', lineHeight: 1 }}>→</span>
-              <input
-                type="date" className="btn btn-ghost"
-                style={{ fontFamily: 'var(--mono)', fontSize: 12 }}
-                value={customTo}
-                onChange={e => setCustomTo(e.target.value)}
-                title="End date"
-              />
-              <button className="btn btn-ghost" style={{ padding: '5px 8px' }}
-                onClick={() => { setCustomFrom(''); setCustomTo(''); setShowCustomPicker(false); }}>
+              <input type="date" className="btn btn-ghost" style={{ fontFamily: 'var(--mono)', fontSize: 12 }} value={customTo} onChange={e => setCustomTo(e.target.value)} title="End date" />
+              <button className="btn btn-ghost" style={{ padding: '5px 8px' }} onClick={() => { setCustomFrom(''); setCustomTo(''); setShowCustomPicker(false); }}>
                 <Icon name="x" size={12} />
               </button>
             </div>
           ) : (
             <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setShowCustomPicker(true)}>
-              <Icon name="calendar" size={12} />
-              Custom Time Period
+              <Icon name="calendar" size={12} />Custom Time Period
             </button>
           )}
           <button className="btn btn-primary" onClick={() => onNavigate?.('import')}><Icon name="upload" size={14} />Import statement</button>
         </div>
       </div>
 
-      {/* Hero band */}
+      {/* ── Hero band ──────────────────────────────────────────────── */}
       <div style={{
         position: 'relative',
         background: 'linear-gradient(135deg, oklch(20% 0.015 260), oklch(15% 0.02 260))',
@@ -260,6 +321,13 @@ export function DashboardPage({ onNavigate, userName }: Props) {
                 <div className="mono" style={{ fontSize: 18, fontWeight: 500, color: 'oklch(95% 0.01 260)' }}>−{fmtCAD(Math.abs(spend))}</div>
                 {!hasCustomRange && <Delta value={spendDelta} />}
               </div>
+              <div style={{ borderLeft: '1px solid oklch(100% 0 0 / 0.12)', paddingLeft: 28 }}>
+                <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'oklch(70% 0.03 260)', marginBottom: 4 }}>Net Worth</div>
+                <div className="mono" style={{ fontSize: 18, fontWeight: 500, color: 'oklch(78% 0.15 160)' }}>{fmtCAD(netWorth)}</div>
+                <div style={{ fontSize: 10, color: 'oklch(55% 0.02 260)', marginTop: 3 }}>
+                  {fmtCompact(savingsBalance)} saved · {fmtCompact(investMV)} invested · {fmtCompact(flexBalance)} flex
+                </div>
+              </div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -268,14 +336,21 @@ export function DashboardPage({ onNavigate, userName }: Props) {
         </div>
       </div>
 
-      {/* Row 1: Cashflow + Donut */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16 }}>
+      {/* ── Row 1: Cash flow + Budget burn-down ────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
+
+        {/* Cash flow */}
         <div className="glass" style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div>
               <div style={{ fontWeight: 500, fontSize: 14 }}>Cash flow</div>
-              <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>Weekly · last 12 weeks</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>
+                {monthAbbr(prevMonth(prevMonth(selectedMonth)))} – {monthAbbr(selectedMonth)}
+              </div>
             </div>
+            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => onNavigate?.('transactions')}>
+              View transactions →
+            </button>
           </div>
           <CashflowBars data={cashflowData} height={200} />
           <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: 'var(--ink-soft)' }}>
@@ -288,82 +363,16 @@ export function DashboardPage({ onNavigate, userName }: Props) {
           </div>
         </div>
 
+        {/* Budget burn-down */}
         <div className="glass" style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div>
-              <div style={{ fontWeight: 500, fontSize: 14 }}>Where it went</div>
-              <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>{donutData.length} categories</div>
+              <div style={{ fontWeight: 500, fontSize: 14 }}>Budget burn-down</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>Day {dayOfMonth} of {daysInMonth} · {Math.round(paceFrac * 100)}% through month</div>
             </div>
-          </div>
-          {donutData.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--ink-mute)', fontSize: 13, padding: '40px 0' }}>No spending this month</div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-              <div style={{ position: 'relative', flexShrink: 0 }}>
-                <Donut data={donutData} size={190} thickness={20} />
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 4 }}>Spent</div>
-                  <div className="mono" style={{ fontSize: 20, fontWeight: 500, letterSpacing: '-0.02em' }}>{fmtCompact(Math.abs(spend))}</div>
-                </div>
-              </div>
-              <div style={{ flex: 1, minWidth: 0, maxWidth: 220, display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {donutData.slice(0, 5).map(d => (
-                  <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
-                    <CatSwatch color={d.color} size={7} />
-                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-2)' }}>{d.label}</span>
-                    <span className="mono" style={{ flexShrink: 0, color: 'var(--ink-2)', fontWeight: 500, fontSize: 11 }}>{fmtCompact(d.value)}</span>
-                    <span className="mono" style={{ flexShrink: 0, color: 'var(--ink-mute)', fontSize: 10, width: 26, textAlign: 'right' }}>
-                      {spend > 0 ? ((d.value / spend) * 100).toFixed(0) : 0}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Row 2: Sankey */}
-      <div className="glass" style={{ padding: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <div>
-            <div style={{ fontWeight: 500, fontSize: 14 }}>Money flow</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>How {hasCustomRange ? 'your' : `${monthAbbr(thisMonth)}'s`} income was allocated</div>
-          </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 80px', alignItems: 'center', gap: 8, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-mute)', fontWeight: 600, marginBottom: 4 }}>
-          <div>Sources</div><div style={{ textAlign: 'center' }}>Flow</div><div style={{ textAlign: 'right' }}>Destinations</div>
-        </div>
-        <Sankey income={sankeyInflows} outflows={sankeyOutflows} height={200} />
-      </div>
-
-      {/* Row 3: Spend trend + Budget burndown */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
-        <div className="glass" style={{ padding: 20 }}>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontWeight: 500, fontSize: 14 }}>Spending trend</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>By category · last 6 months</div>
-          </div>
-          {topStackCats.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--ink-mute)', fontSize: 13, padding: '40px 0' }}>Import a few months of data to see trends</div>
-          ) : (
-            <>
-              <StackedBars months={stackedMonths} categories={topStackCats} height={200} />
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 12, fontSize: 11, color: 'var(--ink-soft)' }}>
-                {topStackCats.map(c => (
-                  <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                    <CatSwatch color={c.color} size={7} />{c.name}
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="glass" style={{ padding: 20 }}>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontWeight: 500, fontSize: 14 }}>Budget burn-down</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>Day {dayOfMonth} of {daysInMonth} · {Math.round(paceFrac * 100)}% through month</div>
+            <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => onNavigate?.('budgets')}>
+              View budgets →
+            </button>
           </div>
           {budgetRows.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--ink-mute)', fontSize: 13, padding: '30px 0' }}>Set limits on the Budgets tab</div>
@@ -396,69 +405,142 @@ export function DashboardPage({ onNavigate, userName }: Props) {
         </div>
       </div>
 
-      {/* Row 4: Recent activity */}
-      <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 14px' }}>
+      {/* ── Row 2: Sankey ──────────────────────────────────────────── */}
+      <div className="glass" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <div>
-            <div style={{ fontWeight: 500, fontSize: 14 }}>Recent activity</div>
+            <div style={{ fontWeight: 500, fontSize: 14 }}>Money flow</div>
             <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>
-              Newest first{needsReviewCount > 0 && ` · ${needsReviewCount} needing review`}{hasCustomRange ? ` · custom range` : selectedMonth !== currentMonthKey() && ` · ${monthFull(selectedMonth)}`}
+              How {hasCustomRange ? 'your' : `${monthAbbr(thisMonth)}'s`} income was allocated
             </div>
           </div>
-          <button className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => onNavigate?.('transactions')}>View all</button>
+          <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 10px' }}
+            onClick={() => { setSankeyExpanded(true); setExTx(0); setExTy(0); setExScale(1); }}>
+            <Icon name="arrow_up_right" size={12} /> Expand
+          </button>
         </div>
-        {recentTxs.length === 0 ? (
-          <div style={{ padding: '24px 20px', textAlign: 'center', color: 'var(--ink-mute)', fontSize: 13 }}>No transactions yet — import a statement to get started.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 80px', alignItems: 'center', gap: 8, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-mute)', fontWeight: 600, marginBottom: 4 }}>
+          <div>Sources</div><div style={{ textAlign: 'center' }}>Flow</div><div style={{ textAlign: 'right' }}>Destinations</div>
+        </div>
+        <Sankey income={sankeyInflows} outflows={sankeyOutflows} height={sankeyHeight} />
+      </div>
+
+      {/* ── Row 3: Savings summary ──────────────────────────────────── */}
+      <div className="glass" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontWeight: 500, fontSize: 14 }}>Savings summary</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>Goals · progress · pace</div>
+          </div>
+          <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => onNavigate?.('savings')}>
+            View savings →
+          </button>
+        </div>
+
+        {/* Totals row */}
+        <div style={{ display: 'flex', gap: 24, marginBottom: 18, paddingBottom: 16, borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 3 }}>Total Saved</div>
+            <div className="mono" style={{ fontSize: 20, fontWeight: 500 }}>{fmtCAD(savingsBalance)}</div>
+          </div>
+          <div style={{ borderLeft: '1px solid var(--line)', paddingLeft: 24 }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 3 }}>Invested</div>
+            <div className="mono" style={{ fontSize: 20, fontWeight: 500 }}>{fmtCAD(investMV)}</div>
+          </div>
+          <div style={{ borderLeft: '1px solid var(--line)', paddingLeft: 24 }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 3 }}>Flex</div>
+            <div className="mono" style={{ fontSize: 20, fontWeight: 500, color: flexBalance >= 0 ? 'oklch(50% 0.16 160)' : 'var(--danger)' }}>
+              {flexBalance >= 0 ? '' : '−'}{fmtCAD(Math.abs(flexBalance))}
+            </div>
+          </div>
+          <div style={{ borderLeft: '1px solid var(--line)', paddingLeft: 24 }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 3 }}>Avg. monthly savings</div>
+            <div className="mono" style={{ fontSize: 20, fontWeight: 500, color: 'var(--ink-soft)' }}>{fmtCAD(avgMonthlySavings)}</div>
+          </div>
+        </div>
+
+        {/* Goal cards — vertical stack */}
+        {goals.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--ink-mute)', fontSize: 13, padding: '20px 0' }}>
+            Add savings goals on the Savings tab
+          </div>
         ) : (
-          <table className="data">
-            <thead>
-              <tr>
-                <th style={{ width: 80 }}>Date</th>
-                <th>Merchant</th>
-                <th style={{ width: 150 }}>Category</th>
-                <th style={{ width: 120 }}>Confidence</th>
-                <th style={{ width: 60 }}>Bank</th>
-                <th style={{ width: 110, textAlign: 'right' }}>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentTxs.map(t => {
-                const cat = t.categoryId ? catMap.get(t.categoryId) : undefined;
-                const isIncome = t.type === 'income';
-                return (
-                  <tr key={t.id}>
-                    <td className="mono" style={{ color: 'var(--ink-soft)', fontSize: 12 }}>{t.date.slice(5)}</td>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{t.merchantRaw}</div>
-                      {t.split && <div style={{ fontSize: 11, color: 'oklch(58% 0.1 75)', marginTop: 2 }}>Split {t.split.people} ways · {fmtCAD(t.split.myShare)} yours</div>}
-                    </td>
-                    <td>
-                      {cat ? (
-                        <span className="chip" style={{ background: `color-mix(in oklab, ${cat.color}, transparent 86%)`, borderColor: `color-mix(in oklab, ${cat.color}, transparent 70%)`, color: `color-mix(in oklab, ${cat.color}, black 20%)` }}>
-                          <CatSwatch color={cat.color} size={6} />{cat.name}
-                        </span>
-                      ) : (t.type === 'spend' || t.type === 'income') ? (
-                        <span className="chip" style={{ color: 'var(--ink-mute)' }}>Uncategorized</span>
-                      ) : (
-                        <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>
-                      )}
-                    </td>
-                    <td>
-                      {(t.type === 'spend' || t.type === 'income') && t.categoryConfidence > 0
-                        ? <ConfBar c={t.categoryConfidence} />
-                        : <span style={{ color: 'var(--ink-mute)', fontSize: 11 }}>—</span>}
-                    </td>
-                    <td><BankLogo bank={t.bank} size={20} /></td>
-                    <td className="mono" style={{ textAlign: 'right', fontWeight: 500, color: isIncome ? 'oklch(50% 0.15 160)' : 'var(--ink)' }}>
-                      {isIncome ? '+' : ''}{fmtCAD(Math.abs(t.amount))}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {goals.map(goal => {
+              const allocated = goal.locked
+                ? (goal.lockedValue ?? 0)
+                : Math.max(0, (goal.pct / 100) * freeBalance);
+              const progress      = goal.target > 0 ? Math.min(1, allocated / goal.target) : 0;
+              const remaining     = Math.max(0, goal.target - allocated);
+              const goalPct       = activePctSum > 0 ? goal.pct / activePctSum : 0;
+              const monthlyContrib = goal.locked ? 0 : avgMonthlySavings * goalPct;
+              let paceLabel: string;
+              if (allocated >= goal.target)      paceLabel = 'Goal reached';
+              else if (monthlyContrib <= 0)      paceLabel = 'No savings rate';
+              else {
+                const months = remaining / monthlyContrib;
+                if (months > 120)   paceLabel = '10+ years';
+                else if (months >= 24) paceLabel = `~${Math.round(months / 12)} years`;
+                else                paceLabel = `~${Math.ceil(months)} months`;
+              }
+              const reachedGoal = allocated >= goal.target;
+              return (
+                <div key={goal.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderRadius: 12, background: 'var(--card-surface)', border: '1px solid var(--line)' }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: goal.color, flexShrink: 0, boxShadow: `0 0 0 3px color-mix(in oklab, ${goal.color}, transparent 78%)` }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13 }}>{goal.name}</div>
+                      <div className="mono" style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+                        {fmtCAD(allocated)} <span style={{ color: 'var(--ink-mute)' }}>/ {fmtCAD(goal.target)}</span>
+                      </div>
+                    </div>
+                    <div className="bar-track" style={{ height: 5 }}>
+                      <div className="bar-fill" style={{ width: Math.round(progress * 100) + '%', background: goal.color }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: 11, color: 'var(--ink-mute)' }}>
+                      <span>{Math.round(progress * 100)}% complete</span>
+                      <span style={{ color: reachedGoal ? 'oklch(50% 0.16 160)' : 'var(--ink-mute)' }}>{paceLabel}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
+
+      {/* ── Sankey expand overlay ───────────────────────────────────── */}
+      {sankeyExpanded && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'oklch(0% 0 0 / 0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setSankeyExpanded(false); }}
+        >
+          <div style={{ width: '92vw', maxWidth: 1200, height: '90vh', background: 'var(--bg)', borderRadius: 20, boxShadow: '0 32px 80px -20px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
+              <div>
+                <div style={{ fontWeight: 500, fontSize: 14 }}>Money flow — expanded</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-mute)', marginTop: 2 }}>Drag to pan · scroll to zoom</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => { setExTx(0); setExTy(0); setExScale(1); }}>Reset</button>
+                <button className="btn btn-ghost" style={{ padding: '5px 8px' }} onClick={() => setSankeyExpanded(false)}><Icon name="x" size={14} /></button>
+              </div>
+            </div>
+            <div
+              style={{ flex: 1, overflow: 'hidden', cursor: exDrag ? 'grabbing' : 'grab', userSelect: 'none', padding: 20 }}
+              onMouseDown={expandMouseDown}
+              onMouseMove={expandMouseMove}
+              onMouseUp={expandMouseUp}
+              onMouseLeave={expandMouseUp}
+              onWheel={expandWheel}
+            >
+              <div style={{ transform: `translate(${exTx}px, ${exTy}px) scale(${exScale})`, transformOrigin: '0 0', transition: exDrag ? 'none' : 'transform 0.1s' }}>
+                <Sankey income={sankeyInflows} outflows={sankeyOutflows} height={Math.max(560, sankeyOutflows.length * 48 + 60)} expanded={true} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

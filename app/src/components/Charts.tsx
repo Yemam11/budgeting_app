@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { FC } from 'react';
 
 const fmtAxis = (v: number) => {
@@ -49,10 +49,14 @@ export const CashflowBars: FC<{ data: CashflowDatum[]; height?: number }> = ({ d
         const x = pad.l + i * (bw + gap) + gap / 2;
         const iH = (d.income / max) * ih;
         const sH = (d.spend / max) * ih;
+        const iTop = pad.t + ih - iH;
+        const sTop = pad.t + ih - sH;
         return (
           <g key={i}>
-            <rect x={x} y={pad.t + ih - iH} width={bw * 0.45} height={iH} rx={3} fill="var(--accent)" opacity={0.95} />
-            <rect x={x + bw * 0.5} y={pad.t + ih - sH} width={bw * 0.45} height={sH} rx={3} fill="oklch(35% 0.015 260)" opacity={0.85} />
+            <rect x={x} y={iTop} width={bw * 0.45} height={iH} rx={3} fill="var(--accent)" opacity={0.95} />
+            <rect x={x + bw * 0.5} y={sTop} width={bw * 0.45} height={sH} rx={3} fill="oklch(35% 0.015 260)" opacity={0.85} />
+            {iH > 14 && <text x={x + bw * 0.225} y={iTop - 3} fontSize="7.5" fill="var(--accent)" textAnchor="middle" fontFamily="var(--mono)" opacity={0.9}>{fmtAxis(d.income)}</text>}
+            {sH > 14 && <text x={x + bw * 0.725} y={sTop - 3} fontSize="7.5" fill="oklch(55% 0.01 260)" textAnchor="middle" fontFamily="var(--mono)" opacity={0.9}>{fmtAxis(d.spend)}</text>}
             <text x={x + bw / 2} y={H - 8} fontSize="10" fill={lbl} textAnchor="middle" fontFamily="var(--sans)">{d.label}</text>
           </g>
         );
@@ -186,93 +190,170 @@ export const StackedBars: FC<{ months: StackedMonth[]; categories: StackedCat[];
 type SankeyInflow = { label: string; value: number };
 type SankeyOutflow = { label: string; value: number; color: string };
 
-const truncate = (s: string, max = 14) => s.length > max ? s.slice(0, max - 1) + '…' : s;
+const truncate = (s: string, max = 20) => s.length > max ? s.slice(0, max - 1) + '…' : s;
 
-export const Sankey: FC<{ income: SankeyInflow[]; outflows: SankeyOutflow[]; height?: number }> = ({ income, outflows, height = 230 }) => {
-  if (income.length === 0 && outflows.length === 0) {
-    return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-mute)', fontSize: 12 }}>No data yet</div>;
-  }
-  const W = 700, H = height;
-  const leftX = 140, midX = 270, midX2 = 430, rightX = 570, nodeW = 10;
-  const usableH = H - 40;
-  const startY = 20;
-
-  const totalIn = income.reduce((s, d) => s + d.value, 0);
+export const Sankey: FC<{ income: SankeyInflow[]; outflows: SankeyOutflow[]; height?: number; expanded?: boolean }> = ({ income, outflows, height = 260, expanded = false }) => {
+  const totalIn  = income.reduce((s, d) => s + d.value, 0);
   const totalOut = outflows.reduce((s, d) => s + d.value, 0);
-  const scaleBase = Math.max(totalIn, totalOut, 1);
-  const scale = usableH / scaleBase;
 
-  let lY = startY;
-  const lNodes = income.map((d, i) => {
-    const h = Math.max(d.value * scale, 4);
-    const n = { ...d, y: lY, h };
-    lY += h + (i < income.length - 1 ? 6 : 0);
+  // Track viewport width so W re-computes on resize
+  const [vw, setVw] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1400));
+  useEffect(() => {
+    const handle = () => setVw(window.innerWidth);
+    window.addEventListener('resize', handle);
+    return () => window.removeEventListener('resize', handle);
+  }, []);
+
+  if (totalIn < 1 && totalOut < 1) {
+    return (
+      <div style={{ height: expanded ? '90vh' : height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-mute)', fontSize: 13 }}>
+        No data for this period
+      </div>
+    );
+  }
+
+  const PAD_T = 12, PAD_B = 16;
+  const MIN_OUT_H = 36;
+  const GAP = 6;
+
+  // Hub height: driven by height prop but at least tall enough for all outflow labels
+  const outMinH = outflows.length * MIN_OUT_H + Math.max(outflows.length - 1, 0) * GAP;
+  const IDEAL_HUB_H = Math.max(height - PAD_T - PAD_B, outMinH, 60);
+  const scale = totalIn > 0 ? IDEAL_HUB_H / totalIn : 1;
+  const hubH  = totalIn * scale;
+
+  // Compute outflow node heights so we can center the income/hub vertically
+  const outHeights = outflows.map(d =>
+    Math.max(totalOut > 0 ? (d.value / totalOut) * hubH : MIN_OUT_H, MIN_OUT_H)
+  );
+  const outColH = outHeights.reduce((s, h) => s + h, 0) + Math.max(outflows.length - 1, 0) * GAP;
+
+  // Center income bar in the outflow column; outflows start from PAD_T so they extend above & below
+  const incStartY = PAD_T + Math.max(0, (outColH - hubH) / 2);
+  const hubY = incStartY;
+
+  let incY = incStartY;
+  const incNodes = income.map((d, i) => {
+    const h = d.value * scale;
+    const n = { ...d, y: incY, h };
+    incY += h + (i < income.length - 1 ? GAP : 0);
     return n;
   });
 
-  const hubH = totalIn * scale;
-
-  const rGap = 2;
-  const rGapTotal = Math.max(outflows.length - 1, 0) * rGap;
-  const rAvail = Math.max(hubH - rGapTotal, 4);
-  let rY = startY;
-  const rNodes = outflows.map((d, i) => {
-    const h = totalOut > 0 ? Math.max((d.value / totalOut) * rAvail, 1) : 1;
-    const n = { ...d, y: rY, h };
-    rY += h + (i < outflows.length - 1 ? rGap : 0);
+  let outY = PAD_T;
+  const outNodes = outflows.map((d, i) => {
+    const h = outHeights[i];
+    const n = { ...d, y: outY, h };
+    outY += h + (i < outflows.length - 1 ? GAP : 0);
     return n;
   });
 
-  let hubAccTop = startY;
-  const leftRibbons = lNodes.map(n => {
-    const y0 = n.y, y1 = hubAccTop;
-    hubAccTop += n.h;
-    const cx = (leftX + midX) / 2;
-    return `M${leftX + nodeW} ${y0} C${cx} ${y0},${cx} ${y1},${midX} ${y1} L${midX} ${y1 + n.h} C${cx} ${y1 + n.h},${cx} ${y0 + n.h},${leftX + nodeW} ${y0 + n.h} Z`;
+  const lastIncY = incNodes.length ? incNodes[incNodes.length - 1].y + incNodes[incNodes.length - 1].h : incStartY;
+  const lastOutY = outNodes.length ? outNodes[outNodes.length - 1].y + outNodes[outNodes.length - 1].h : PAD_T;
+  const H = Math.max(hubY + hubH, lastIncY, lastOutY) + PAD_B;
+
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
+  // Expanded: viewBox fills the 90vh overlay. Card: W ≈ card rendered width so viewBox maps 1:1 with no letterboxing.
+  const W = expanded
+    ? Math.max(Math.ceil(H * (vw * 0.97) / (vh * 0.9)), H)
+    : Math.max(vw - 100, Math.ceil(H * 1.5));
+
+  // Column positions as fixed proportions of W
+  const INC_X  = Math.round(W * 0.235);
+  const HUB_X  = Math.round(W * 0.480);
+  const OUT_X  = Math.round(W * 0.725);
+  const NODE_W = Math.max(8, Math.round(W * 0.009));
+
+  // Left ribbons: income nodes → hub (gaps compress away at the hub side)
+  let hubAccL = hubY;
+  const leftRibbons = incNodes.map(n => {
+    const y0 = n.y, y0b = n.y + n.h, y1 = hubAccL, y1b = hubAccL + n.h;
+    hubAccL += n.h;
+    const cx = (INC_X + NODE_W + HUB_X) / 2;
+    return `M${INC_X + NODE_W} ${y0} C${cx} ${y0},${cx} ${y1},${HUB_X} ${y1} L${HUB_X} ${y1b} C${cx} ${y1b},${cx} ${y0b},${INC_X + NODE_W} ${y0b} Z`;
   });
 
-  let hubAccBot = startY;
-  const rightRibbons = rNodes.map(n => {
-    const y0 = hubAccBot, y1 = n.y;
-    hubAccBot += n.h;
-    const cx = (midX2 + rightX) / 2;
-    return { path: `M${midX2} ${y0} C${cx} ${y0},${cx} ${y1},${rightX - nodeW} ${y1} L${rightX - nodeW} ${y1 + n.h} C${cx} ${y1 + n.h},${cx} ${y0 + n.h},${midX2} ${y0 + n.h} Z`, color: n.color };
+  // Right ribbons: hub slice (proportional to value) → outflow node (full node height)
+  let hubAccR = hubY;
+  const rightRibbons = outNodes.map(n => {
+    const sliceH = totalOut > 0 ? (n.value / totalOut) * hubH : 0;
+    const y0 = hubAccR, y0b = y0 + sliceH, y1 = n.y, y1b = n.y + n.h;
+    hubAccR += sliceH;
+    const cx = (HUB_X + NODE_W + OUT_X) / 2;
+    return {
+      path: `M${HUB_X + NODE_W} ${y0} C${cx} ${y0},${cx} ${y1},${OUT_X} ${y1} L${OUT_X} ${y1b} C${cx} ${y1b},${cx} ${y0b},${HUB_X + NODE_W} ${y0b} Z`,
+      color: n.color,
+    };
   });
 
+  const svgBody = (
+    <>
+      {leftRibbons.map((p, i) => (
+        <path key={'l' + i} d={p} fill="var(--accent)" opacity={0.4} />
+      ))}
+      {rightRibbons.map((r, i) => (
+        <path key={'r' + i} d={r.path} fill={r.color} opacity={0.55} />
+      ))}
+
+      <rect x={HUB_X} y={hubY} width={NODE_W} height={hubH} rx={2} fill="oklch(25% 0.015 260)" />
+
+      {incNodes.map((n, i) => {
+        const cy = n.y + n.h / 2;
+        return (
+          <g key={'in' + i}>
+            <rect x={INC_X} y={n.y} width={NODE_W} height={n.h} rx={2} fill="var(--accent)" />
+            {n.h >= 16 && (
+              <>
+                <text x={INC_X - 12} y={cy - 4} textAnchor="end" fontSize="16" fontWeight="600" fill="var(--ink-2)">{n.label}</text>
+                <text x={INC_X - 12} y={cy + 14} textAnchor="end" fontSize="13" fill="var(--ink-mute)" fontFamily="var(--mono)">{fmtAxis(n.value)}</text>
+              </>
+            )}
+          </g>
+        );
+      })}
+
+      {outNodes.map((n, i) => {
+        const cy = n.y + n.h / 2;
+        const twoLine = n.h >= 52;
+        return (
+          <g key={'out' + i}>
+            <rect x={OUT_X} y={n.y} width={NODE_W} height={n.h} rx={2} fill={n.color} />
+            {twoLine ? (
+              <>
+                <text x={OUT_X + NODE_W + 12} y={cy - 4} fontSize="16" fontWeight="600" fill="var(--ink-2)">{truncate(n.label, 22)}</text>
+                <text x={OUT_X + NODE_W + 12} y={cy + 14} fontSize="13" fill="var(--ink-mute)" fontFamily="var(--mono)">{fmtAxis(n.value)}</text>
+              </>
+            ) : (
+              <text x={OUT_X + NODE_W + 12} y={cy + 5} fontSize="14" fill="var(--ink-2)">
+                <tspan fontWeight="600">{truncate(n.label, 18)}</tspan>
+                <tspan fill="var(--ink-mute)" fontFamily="var(--mono)" fontSize="12"> — {fmtAxis(n.value)}</tspan>
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </>
+  );
+
+  if (expanded) {
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="90vh" style={{ display: 'block' }}>
+        {svgBody}
+      </svg>
+    );
+  }
+
+  // Padding-bottom trick: forces the div to exactly H/W aspect ratio,
+  // so the SVG fills it without any letterboxing or dead space.
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
-      {leftRibbons.map((p, i) => <path key={'l' + i} d={p} fill="var(--accent)" opacity={0.3} />)}
-      {rightRibbons.map((r, i) => <path key={'r' + i} d={r.path} fill={r.color} opacity={0.38} />)}
-
-      <rect x={midX} y={startY} width={nodeW} height={hubH} rx={2} fill="oklch(30% 0.015 260)" />
-      <rect x={midX2 - nodeW} y={startY} width={nodeW} height={hubH} rx={2} fill="oklch(30% 0.015 260)" />
-
-      {lNodes.map((n, i) => {
-        const midY = n.y + n.h / 2;
-        return (
-          <g key={'ln' + i}>
-            <rect x={leftX} y={n.y} width={nodeW} height={n.h} rx={2} fill="var(--accent)" />
-            {n.h >= 12 && <>
-              <text x={leftX - 10} y={midY + (n.h < 22 ? 3 : -1)} fontSize="10" fill="var(--ink-2)" textAnchor="end" fontWeight="500">{truncate(n.label)}</text>
-              {n.h >= 22 && <text x={leftX - 10} y={midY + 11} fontSize="9" fill="var(--ink-mute)" textAnchor="end" fontFamily="var(--mono)">{fmtAxis(n.value)}</text>}
-            </>}
-          </g>
-        );
-      })}
-
-      {rNodes.map((n, i) => {
-        const midY = n.y + n.h / 2;
-        return (
-          <g key={'rn' + i}>
-            <rect x={rightX - nodeW} y={n.y} width={nodeW} height={n.h} rx={2} fill={n.color} />
-            {n.h >= 10 && <>
-              <text x={rightX + 10} y={midY + (n.h < 22 ? 3 : -1)} fontSize="10" fill="var(--ink-2)" fontWeight="500">{truncate(n.label)}</text>
-              {n.h >= 22 && <text x={rightX + 10} y={midY + 11} fontSize="9" fill="var(--ink-mute)" fontFamily="var(--mono)">{fmtAxis(n.value)}</text>}
-            </>}
-          </g>
-        );
-      })}
-    </svg>
+    <div style={{ position: 'relative', width: '100%', paddingBottom: `${(H / W * 100).toFixed(2)}%` }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'block' }}
+      >
+        {svgBody}
+      </svg>
+    </div>
   );
 };
 
