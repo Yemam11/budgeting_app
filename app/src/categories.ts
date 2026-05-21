@@ -14,6 +14,7 @@ export const SEED_CATEGORIES: Category[] = [
   { id: 'online-purchase', name: 'Online Purchase', color: '#6366f1', order: 100 },
   { id: 'health-medical', name: 'Health/Medical', color: '#059669', order: 110 },
   { id: 'investment', name: 'Investment', color: '#1e40af', order: 120 },
+  { id: 'savings-transfer', name: 'Savings Transfer', color: 'oklch(60% 0.16 210)', order: 122 },
   { id: 'charity', name: 'Charity', color: '#a16207', order: 130 },
   { id: 'gift', name: 'Gift', color: '#be185d', order: 140 },
   { id: 'one-time-misc', name: 'One-time Misc', color: '#78716c', order: 150 },

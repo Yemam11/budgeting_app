@@ -13,6 +13,26 @@ sqldb.exec('PRAGMA journal_mode = WAL;');
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN spreadMonths INTEGER'); } catch {}
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN owner TEXT'); } catch {}
 try { sqldb.exec('ALTER TABLE transactions ADD COLUMN envelopeId TEXT'); } catch {}
+try { sqldb.exec('ALTER TABLE transactions ADD COLUMN investmentAccount TEXT'); } catch {}
+try { sqldb.exec('ALTER TABLE transactions ADD COLUMN holdingLogged INTEGER DEFAULT 0'); } catch {}
+sqldb.exec(`CREATE TABLE IF NOT EXISTS holdings (
+  id TEXT PRIMARY KEY,
+  accountId TEXT NOT NULL,
+  ticker TEXT NOT NULL,
+  shares REAL NOT NULL DEFAULT 0
+);`);
+
+sqldb.exec(`CREATE TABLE IF NOT EXISTS custom_rules (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  merchantContains TEXT,
+  amountOp TEXT,
+  amountValue REAL,
+  targetType TEXT,
+  targetCategoryId TEXT,
+  priority INTEGER DEFAULT 0,
+  createdAt INTEGER
+);`);
 
 sqldb.exec(`
   CREATE TABLE IF NOT EXISTS envelopes (
@@ -111,6 +131,8 @@ const TABLES = {
   people:              { sql: 'people',             pk: 'id' },
   'category-forwards': { sql: 'category_forwards',  pk: 'fromCategoryId' },
   envelopes:           { sql: 'envelopes',           pk: 'id' },
+  'custom-rules':      { sql: 'custom_rules',        pk: 'id' },
+  holdings:            { sql: 'holdings',            pk: 'id' },
 };
 
 const QUOTED_COLS = new Set(['order']);
@@ -121,7 +143,7 @@ function toSql(table, col, val) {
   if (table === 'transactions') {
     if (col === 'split' || col === 'rawRow')
       return typeof val === 'object' ? JSON.stringify(val) : val;
-    if (col === 'hidden') return val ? 1 : 0;
+    if (col === 'hidden' || col === 'holdingLogged') return val ? 1 : 0;
   }
   if (table === 'categories') {
     if (col === 'archived' || col === 'isIncome') return val ? 1 : 0;
@@ -140,6 +162,7 @@ function fromSql(table, row) {
         split: row.split ? JSON.parse(row.split) : undefined,
         rawRow: row.rawRow ? JSON.parse(row.rawRow) : undefined,
         hidden: row.hidden === 1,
+        holdingLogged: row.holdingLogged === 1,
         amount: Number(row.amount),
         categoryConfidence: Number(row.categoryConfidence || 0),
         spreadMonths: row.spreadMonths != null ? Number(row.spreadMonths) : undefined,
@@ -279,6 +302,50 @@ for (const [route, { sql, pk }] of Object.entries(TABLES)) {
     res.json({});
   });
 }
+
+app.get('/api/prices', async (req, res) => {
+  const tickers = String(req.query.tickers || '').split(',').map(t => t.trim()).filter(Boolean);
+  if (!tickers.length) return res.json({ prices: {}, usdcad: null, converted: [] });
+
+  const rawPrices = {};
+  const currencies = {};
+  await Promise.all([...tickers, 'USDCAD=X'].map(async ticker => {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+      const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      const data = await r.json();
+      const meta = data?.chart?.result?.[0]?.meta;
+      rawPrices[ticker] = meta?.regularMarketPrice ?? null;
+      currencies[ticker] = meta?.currency ?? null;
+    } catch { rawPrices[ticker] = null; currencies[ticker] = null; }
+  }));
+
+  const usdcad = rawPrices['USDCAD=X'] ?? null;
+  const prices = {};
+  const converted = [];
+  for (const ticker of tickers) {
+    const price = rawPrices[ticker];
+    if (price != null && currencies[ticker] === 'USD' && usdcad != null) {
+      prices[ticker] = price * usdcad;
+      converted.push(ticker);
+    } else {
+      prices[ticker] = price;
+    }
+  }
+  res.json({ prices, usdcad, converted });
+});
+
+app.get('/api/ticker-search', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json([]);
+  try {
+    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=0&listsCount=0`;
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const data = await r.json();
+    const quotes = (data?.quotes ?? []).filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF');
+    res.json(quotes.slice(0, 8).map(q => ({ ticker: q.symbol, name: q.shortname || q.longname || '' })));
+  } catch { res.json([]); }
+});
 
 app.delete('/api/all', (_req, res) => {
   sqldb.exec(Object.values(TABLES).map(({ sql }) => `DELETE FROM ${sql};`).join(''));

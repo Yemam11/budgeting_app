@@ -30,13 +30,18 @@ export const Icon: FC<{ name: string; size?: number; stroke?: number }> = ({ nam
     chevron_right: <><path d="m9 18 6-6-6-6"/></>,
     shield: <><path d="M12 3l8 3v5c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6z"/></>,
     lock: <><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></>,
+    unlock: <><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></>,
     trash: <><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></>,
+    eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
     eye_off: <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>,
     edit: <><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></>,
     person: <><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></>,
     envelope: <><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 8.5l10 7 10-7"/></>,
     sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M17.66 6.34l-1.41 1.41M6.34 17.66l-1.41 1.41"/></>,
     moon: <><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></>,
+    piggybank: <><ellipse cx="12" cy="13" rx="7.5" ry="6.5"/><path d="M12 6.5V4.5"/><path d="M10 4.5h4"/><path d="M19.5 11c1.2.7 2 2 2 3.5"/><path d="M8.5 19l-1 2.5"/><path d="M15.5 19l1 2.5"/><circle cx="9.5" cy="12" r="1" fill="currentColor" stroke="none"/></>,
+    chart_line: <><polyline points="3 17 9 11 13 13 21 5"/><path d="M21 5h-5M21 5v5"/></>,
+    refresh: <><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></>,
   };
   return (
     <svg

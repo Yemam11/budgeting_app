@@ -13,7 +13,7 @@ export function categorize(
   type: TxType,
   merchantRules: Map<string, MerchantRule>,
 ): Categorization {
-  if (type === 'transfer' || type === 'cc-payment') {
+  if (type === 'transfer' || type === 'cc-payment' || type === 'savings' || type === 'investment') {
     return { categoryId: null, confidence: 1, source: 'seed-rule' };
   }
 

@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { useQuery } from '../hooks/useQuery';
 import { db } from '../db';
-import type { Category, MerchantRule, Person } from '../types';
+import type { AmountOp, Category, CustomRule, MerchantRule, Person, TxType } from '../types';
+import { applyCustomRules } from '../lib/customRules';
 import { bulkRecategorizeByCategory } from '../lib/recategorize';
 import { exportAll, importAll, wipeAll } from '../lib/backup';
 import { Icon, CatSwatch, Toggle } from '../components/Primitives';
@@ -25,9 +26,27 @@ function Section({ title, desc, children }: { title: string; desc?: string; chil
   );
 }
 
+const TYPE_OPTS: { value: TxType; label: string }[] = [
+  { value: 'spend',      label: 'Spend' },
+  { value: 'income',     label: 'Income' },
+  { value: 'savings',    label: 'Savings' },
+  { value: 'investment', label: 'Investment' },
+  { value: 'transfer',   label: 'Transfer' },
+  { value: 'cc-payment', label: 'CC Payment' },
+];
+
+const AMOUNT_OPS: { value: AmountOp; label: string }[] = [
+  { value: '>',  label: '>' },
+  { value: '>=', label: '>=' },
+  { value: '<',  label: '<' },
+  { value: '<=', label: '<=' },
+  { value: '=',  label: '=' },
+];
+
 export function SettingsPage({ userName = '' }: { userName?: string }) {
   const categories = useQuery(() => db.categories.orderBy('order').toArray(), []) ?? [];
   const merchantRules = useQuery(() => db.merchantRules.toArray(), []) ?? [];
+  const customRules = useQuery(() => db.customRules.orderBy('priority').toArray(), []) ?? [];
   const people = useQuery(() => db.people.orderBy('createdAt').toArray(), []) ?? [];
   const txCount = useQuery(() => db.transactions.count(), []) ?? 0;
 
@@ -180,6 +199,66 @@ export function SettingsPage({ userName = '' }: { userName?: string }) {
     if (!window.confirm('Delete ALL local data? This cannot be undone.')) return;
     if (!window.confirm('Really sure? All transactions, categories, budgets, history — everything — will be gone.')) return;
     await wipeAll();
+  }
+
+  // ── Custom rules state ───────────────────────────────────────────
+  const [crFormOpen, setCrFormOpen] = useState(false);
+  const [crEditId,   setCrEditId]   = useState<string | null>(null);
+  const [crName,          setCrName]          = useState('');
+  const [crMerchant,      setCrMerchant]      = useState('');
+  const [crAmountOp,      setCrAmountOp]      = useState<AmountOp>('>');
+  const [crAmountValue,   setCrAmountValue]   = useState('');
+  const [crUseAmount,     setCrUseAmount]     = useState(false);
+  const [crTargetType,    setCrTargetType]    = useState<TxType | ''>('');
+  const [crTargetCat,     setCrTargetCat]     = useState('');
+
+  function resetCrForm() {
+    setCrEditId(null); setCrName(''); setCrMerchant(''); setCrAmountOp('>');
+    setCrAmountValue(''); setCrUseAmount(false); setCrTargetType(''); setCrTargetCat('');
+    setCrFormOpen(false);
+  }
+
+  function openEditCr(r: CustomRule) {
+    setCrEditId(r.id); setCrName(r.name); setCrMerchant(r.merchantContains ?? '');
+    setCrUseAmount(r.amountOp !== undefined); setCrAmountOp(r.amountOp ?? '>');
+    setCrAmountValue(r.amountValue !== undefined ? String(r.amountValue) : '');
+    setCrTargetType(r.targetType ?? ''); setCrTargetCat(r.targetCategoryId ?? '');
+    setCrFormOpen(true);
+  }
+
+  async function saveCrRule(applyToPast: boolean) {
+    if (!crMerchant.trim() && !crUseAmount) return;
+    if (!crTargetType && !crTargetCat) return;
+    const id = crEditId ?? nanoid();
+    const amtVal = parseFloat(crAmountValue);
+    const rule: CustomRule = {
+      id,
+      name: crName.trim() || crMerchant.trim(),
+      merchantContains: crMerchant.trim() || undefined,
+      amountOp: crUseAmount ? crAmountOp : undefined,
+      amountValue: crUseAmount && !isNaN(amtVal) ? amtVal : undefined,
+      targetType: crTargetType || undefined,
+      targetCategoryId: crTargetCat || undefined,
+      priority: crEditId ? (customRules.find(r => r.id === crEditId)?.priority ?? customRules.length) : customRules.length,
+      createdAt: crEditId ? (customRules.find(r => r.id === crEditId)?.createdAt ?? Date.now()) : Date.now(),
+    };
+    await db.customRules.put(rule);
+    if (applyToPast) {
+      const txs = await db.transactions.toArray();
+      let n = 0;
+      for (const tx of txs) {
+        const patch = applyCustomRules([rule], tx);
+        if (patch) { await db.transactions.update(tx.id, patch); n++; }
+      }
+      setStatus(`Rule saved · applied to ${n} past transaction${n === 1 ? '' : 's'}.`);
+      setTimeout(() => setStatus(null), 4000);
+    }
+    resetCrForm();
+  }
+
+  async function deleteCrRule(id: string) {
+    if (!window.confirm('Delete this rule? Future imports won\'t be affected by it.')) return;
+    await db.customRules.delete(id);
   }
 
   const activeCategories = categories.filter(c => !c.archived);
@@ -471,6 +550,124 @@ export function SettingsPage({ userName = '' }: { userName?: string }) {
               );
             })}
           </div>
+        )}
+      </Section>
+
+      {/* Custom Rules */}
+      <Section
+        title="Custom rules"
+        desc="IF-THEN rules applied on import. Each rule can match by merchant keyword and/or amount, then set the transaction type or category."
+      >
+        {customRules.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 14 }}>
+            {customRules.map((rule, idx) => (
+              <div key={rule.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: idx < customRules.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{rule.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-mute)', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {rule.merchantContains && (
+                      <span className="chip">merchant contains <strong style={{ color: 'var(--ink-soft)' }}>"{rule.merchantContains}"</strong></span>
+                    )}
+                    {rule.amountOp && rule.amountValue !== undefined && (
+                      <span className="chip">amount {rule.amountOp} <strong style={{ color: 'var(--ink-soft)' }}>${rule.amountValue}</strong></span>
+                    )}
+                    <span style={{ color: 'var(--ink-mute)', alignSelf: 'center' }}>→</span>
+                    {rule.targetType && (
+                      <span className="chip chip-accent">type: {rule.targetType}</span>
+                    )}
+                    {rule.targetCategoryId && (
+                      <span className="chip chip-accent">category: {catMap.get(rule.targetCategoryId)?.name ?? rule.targetCategoryId}</span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => openEditCr(rule)} className="btn btn-ghost" style={{ fontSize: 11, flexShrink: 0 }}>
+                  Edit
+                </button>
+                <button onClick={() => deleteCrRule(rule.id)} title="Delete"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-mute)', padding: '2px 4px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                  <Icon name="trash" size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {crFormOpen ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 12, background: 'var(--card-surface)', border: '1px solid var(--line)' }}>
+            <div style={{ fontWeight: 500, fontSize: 13 }}>{crEditId ? 'Edit rule' : 'New rule'}</div>
+
+            {/* Name */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, color: 'var(--ink-mute)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Rule name (optional)</label>
+              <input className="input" value={crName} onChange={e => setCrName(e.target.value)} placeholder="e.g. Auto-savings" style={{ fontSize: 13 }} />
+            </div>
+
+            {/* IF block */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 10, background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent), transparent 72%)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--accent-ink)' }}>IF (all must match)</div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--ink-mute)' }}>Merchant / description contains</label>
+                <input className="input" value={crMerchant} onChange={e => setCrMerchant(e.target.value)}
+                  placeholder="e.g. Investment Purchase" style={{ fontSize: 13 }} />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" id="cr-use-amount" checked={crUseAmount} onChange={e => setCrUseAmount(e.target.checked)} />
+                <label htmlFor="cr-use-amount" style={{ fontSize: 12, color: 'var(--ink-soft)', cursor: 'pointer' }}>Also match by amount</label>
+              </div>
+              {crUseAmount && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select className="btn btn-ghost" value={crAmountOp} onChange={e => setCrAmountOp(e.target.value as AmountOp)} style={{ fontSize: 12, padding: '4px 8px' }}>
+                    {AMOUNT_OPS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <input className="input" value={crAmountValue} onChange={e => setCrAmountValue(e.target.value)}
+                    placeholder="100" type="number" min="0" step="0.01" style={{ width: 110, fontSize: 13 }} />
+                  <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>(absolute value, ignores sign)</span>
+                </div>
+              )}
+            </div>
+
+            {/* THEN block */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 10, background: 'var(--card-surface-2)', border: '1px solid var(--line)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-mute)' }}>THEN</div>
+
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 140px' }}>
+                  <label style={{ fontSize: 11, color: 'var(--ink-mute)' }}>Set type to</label>
+                  <select className="btn btn-ghost" value={crTargetType} onChange={e => setCrTargetType(e.target.value as TxType | '')} style={{ fontSize: 12, appearance: 'none' }}>
+                    <option value="">(no change)</option>
+                    {TYPE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 140px' }}>
+                  <label style={{ fontSize: 11, color: 'var(--ink-mute)' }}>Set category to</label>
+                  <select className="btn btn-ghost" value={crTargetCat} onChange={e => setCrTargetCat(e.target.value)} style={{ fontSize: 12, appearance: 'none' }}>
+                    <option value="">(no change)</option>
+                    {categories.filter(c => !c.archived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" style={{ fontSize: 12 }}
+                disabled={(!crMerchant.trim() && !crUseAmount) || (!crTargetType && !crTargetCat)}
+                onClick={() => saveCrRule(false)}>
+                Save rule
+              </button>
+              <button className="btn" style={{ fontSize: 12, background: 'var(--accent-soft)', color: 'var(--accent-ink)', borderColor: 'color-mix(in oklab, var(--accent), transparent 60%)' }}
+                disabled={(!crMerchant.trim() && !crUseAmount) || (!crTargetType && !crTargetCat)}
+                onClick={() => saveCrRule(true)}>
+                Save &amp; apply to past transactions
+              </button>
+              <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={resetCrForm}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => { resetCrForm(); setCrFormOpen(true); }}>
+            <Icon name="plus" size={12} />New rule
+          </button>
         )}
       </Section>
 
