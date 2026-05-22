@@ -152,10 +152,9 @@ function PartitionSlider({ goals, balance, onGoalsChange }: {
 }
 
 // ── GoalCard ──────────────────────────────────────────────────────────────────
-function GoalCard({ goal, freeBalance, totalBalance, onRename, onRetarget, onReallocate, onSetLockedValue, onRemove, onToggleLock }: {
+function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onSetLockedValue, onRemove, onToggleLock }: {
   goal: SavingsGoal;
   freeBalance: number;
-  totalBalance: number;
   onRename: (name: string) => void;
   onRetarget: (target: number) => void;
   onReallocate: (newAmount: number) => void;
@@ -738,7 +737,7 @@ export function SavingsInvestmentsPage() {
               <PartitionSlider goals={goals} balance={Math.max(0, freeBalance)} onGoalsChange={setGoals} />
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', marginTop: 16 }}>
                 {activeGoals.map(g => (
-                  <GoalCard key={g.id} goal={g} freeBalance={freeBalance} totalBalance={balance}
+                  <GoalCard key={g.id} goal={g} freeBalance={freeBalance}
                     onRename={name       => updateGoal(g.id, { name })}
                     onRetarget={target   => updateGoal(g.id, { target })}
                     onReallocate={amt    => reallocateGoal(g.id, amt)}
@@ -810,7 +809,7 @@ export function SavingsInvestmentsPage() {
             </div>
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))' }}>
               {goals.filter(g => g.locked).map(g => (
-                <GoalCard key={g.id} goal={g} freeBalance={freeBalance} totalBalance={balance}
+                <GoalCard key={g.id} goal={g} freeBalance={freeBalance}
                   onRename={name       => updateGoal(g.id, { name })}
                   onRetarget={target   => updateGoal(g.id, { target })}
                   onReallocate={amt    => reallocateGoal(g.id, amt)}

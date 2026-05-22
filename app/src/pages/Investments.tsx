@@ -701,10 +701,6 @@ export function InvestmentsPage() {
     }, 0),
   [accounts, holdingsData, prices]);
 
-  const totalCostBasis = useMemo(() =>
-    holdingsData.reduce((s, h) => s + h.shares * (h.avgCost ?? 0), 0),
-  [holdingsData]);
-
   const displayNetDeposits = netDepositsOverride ?? totalNetDeposits;
   const displayMarketValue = marketValueOverride ?? totalMarketValue;
 
