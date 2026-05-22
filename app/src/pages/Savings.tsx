@@ -14,7 +14,6 @@ const SI_GOALS_DEFAULT: SavingsGoal[] = [
   { id: 'sg3', name: 'Emergency Fund',     target: 15000, pct: 20, color: 'oklch(66% 0.15 45)'  },
 ];
 
-
 const GOAL_EXTRA_COLORS = [
   'oklch(62% 0.17 300)',
   'oklch(65% 0.15 20)',
@@ -22,8 +21,8 @@ const GOAL_EXTRA_COLORS = [
   'oklch(68% 0.13 90)',
 ];
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ PartitionSlider Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-// Shows only ACTIVE (unlocked) goals Ã¢â‚¬â€ always fills 100% of bar.
+// ── PartitionSlider ──────────────────────────────────────────────────────────
+// Shows only ACTIVE (unlocked) goals — always fills 100% of bar.
 // `balance` = freeBalance from parent; when 0, shows % instead of dollars.
 function PartitionSlider({ goals, balance, onGoalsChange }: {
   goals: SavingsGoal[];
@@ -152,13 +151,15 @@ function PartitionSlider({ goals, balance, onGoalsChange }: {
   );
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ GoalCard Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRemove, onToggleLock }: {
+// ── GoalCard ──────────────────────────────────────────────────────────────────
+function GoalCard({ goal, freeBalance, totalBalance, onRename, onRetarget, onReallocate, onSetLockedValue, onRemove, onToggleLock }: {
   goal: SavingsGoal;
   freeBalance: number;
+  totalBalance: number;
   onRename: (name: string) => void;
   onRetarget: (target: number) => void;
   onReallocate: (newAmount: number) => void;
+  onSetLockedValue: (val: number) => void;
   onRemove: () => void;
   onToggleLock: () => void;
 }) {
@@ -170,6 +171,25 @@ function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRem
   const [tgtDraft,    setTgtDraft]    = useState(String(goal.target));
   const [editAlloc,   setEditAlloc]   = useState(false);
   const [allocDraft,  setAllocDraft]  = useState('');
+  const [allocError,  setAllocError]  = useState('');
+
+  const maxLockedEdit = freeBalance + (goal.lockedValue ?? 0);
+
+  const commitAllocEdit = () => {
+    const v = parseFloat(allocDraft.replace(/[^0-9.]/g, ''));
+    if (isNaN(v)) { setEditAlloc(false); setAllocError(''); return; }
+    if (goal.locked) {
+      if (v <= 0) { setAllocError('Completed goal value must be greater than $0.'); return; }
+      if (v > maxLockedEdit) { setAllocError(`Cannot exceed available balance of ${fmtCAD(maxLockedEdit)}.`); return; }
+      onSetLockedValue(v);
+    } else {
+      if (v < 0) { setAllocError('Amount cannot be negative.'); return; }
+      if (v > freeBalance) { setAllocError(`Cannot exceed active balance of ${fmtCAD(freeBalance)}.`); return; }
+      onReallocate(v);
+    }
+    setEditAlloc(false);
+    setAllocError('');
+  };
 
   return (
     <div className="glass" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -195,11 +215,11 @@ function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRem
           {goal.locked
             ? <span style={{ fontSize: 10, fontWeight: 600, color: goal.color,
                 background: `color-mix(in oklab, ${goal.color}, transparent 88%)`,
-                padding: '1px 5px', borderRadius: 4, letterSpacing: '0.04em' }}>LOCKED</span>
+                padding: '1px 5px', borderRadius: 4, letterSpacing: '0.04em' }}>DONE</span>
             : <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontFamily: 'var(--mono)' }}>{Math.round(goal.pct)}%</span>
           }
           <button onClick={onToggleLock}
-            title={goal.locked ? 'Unlock Ã¢â‚¬â€ re-enter active savings pool' : 'Lock value at current amount'}
+            title={goal.locked ? 'Move back to active goals' : 'Mark as completed'}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18,
               borderRadius: 4, border: 'none', cursor: 'pointer',
               background: goal.locked ? `color-mix(in oklab, ${goal.color}, transparent 78%)` : 'none',
@@ -217,31 +237,25 @@ function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRem
       {/* Amount */}
       <div>
         {editAlloc ? (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
-            <span style={{ fontSize: 16, color: 'var(--ink-mute)', fontFamily: 'var(--mono)' }}>$</span>
-            <input className="input" value={allocDraft} onChange={e => setAllocDraft(e.target.value)}
-              autoFocus style={{ fontSize: 18, fontFamily: 'var(--mono)', fontWeight: 500, width: 100, letterSpacing: '-0.02em' }}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  const v = parseFloat(allocDraft.replace(/[^0-9.]/g, ''));
-                  if (!isNaN(v) && v >= 0) onReallocate(v);
-                  setEditAlloc(false);
-                }
-                if (e.key === 'Escape') setEditAlloc(false);
-              }}
-              onBlur={() => {
-                const v = parseFloat(allocDraft.replace(/[^0-9.]/g, ''));
-                if (!isNaN(v) && v >= 0) onReallocate(v);
-                setEditAlloc(false);
-              }} />
+          <div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
+              <span style={{ fontSize: 16, color: 'var(--ink-mute)', fontFamily: 'var(--mono)' }}>$</span>
+              <input className="input" value={allocDraft} onChange={e => { setAllocDraft(e.target.value); setAllocError(''); }}
+                autoFocus style={{ fontSize: 18, fontFamily: 'var(--mono)', fontWeight: 500, width: 100, letterSpacing: '-0.02em',
+                  borderColor: allocError ? 'var(--danger)' : undefined }}
+                onKeyDown={e => { if (e.key === 'Enter') commitAllocEdit(); if (e.key === 'Escape') { setEditAlloc(false); setAllocError(''); } }}
+                onBlur={commitAllocEdit} />
+            </div>
+            {allocError && (
+              <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>{allocError}</div>
+            )}
           </div>
         ) : (
           <div
-            title={goal.locked ? 'Unlock to edit allocation' : 'Click to set amount'}
-            onClick={() => { if (!goal.locked) { setAllocDraft(allocated.toFixed(2)); setEditAlloc(true); } }}
+            title="Click to edit amount"
+            onClick={() => { setAllocDraft(allocated.toFixed(2)); setEditAlloc(true); setAllocError(''); }}
             style={{ fontSize: 24, fontWeight: 500, letterSpacing: '-0.025em', fontFamily: 'var(--mono)',
-              cursor: goal.locked ? 'default' : 'text', display: 'inline-block',
-              opacity: goal.locked ? 0.75 : 1 }}>
+              cursor: 'text', display: 'inline-block' }}>
             {fmtCAD(allocated)}
           </div>
         )}
@@ -271,15 +285,15 @@ function GoalCard({ goal, freeBalance, onRename, onRetarget, onReallocate, onRem
         <div style={{ fontSize: 10, color: 'var(--ink-mute)', marginTop: 4, fontFamily: 'var(--mono)' }}>
           {Math.round(progress * 100)}%{' '}
           {allocated < goal.target
-            ? <span>Ã‚Â· {fmtCAD(goal.target - allocated)} to go</span>
-            : <span style={{ color: 'oklch(50% 0.16 160)' }}>Ã‚Â· Goal reached Ã°Å¸Å½â€°</span>}
+            ? <span>· {fmtCAD(goal.target - allocated)} to go</span>
+            : <span style={{ color: 'oklch(50% 0.16 160)' }}>· Goal reached 🎉</span>}
         </div>
       </div>
     </div>
   );
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ FlexAllocRow Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── FlexAllocRow ──────────────────────────────────────────────────────────────
 function FlexAllocRow({ color, label, sublabel, amount, accent }: {
   color: string; label: string; sublabel?: string; amount: number; accent: string;
 }) {
@@ -300,7 +314,7 @@ function FlexAllocRow({ color, label, sublabel, amount, accent }: {
   );
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ FlexCard Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── FlexCard ──────────────────────────────────────────────────────────────────
 function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
   goals: SavingsGoal[];
   flexBalance: number;
@@ -334,10 +348,10 @@ function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
 
         {/* Balance */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="eyebrow" style={{ marginBottom: 2 }}>Flex Account Ã‚Â· Virtual buffer</div>
+          <div className="eyebrow" style={{ marginBottom: 2 }}>Flex Account · Virtual buffer</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 30, fontWeight: 500, letterSpacing: '-0.025em', color: accentColor, fontFamily: 'var(--mono)' }}>
-              {positive ? '' : 'Ã¢Ë†â€™'}{fmtCAD(Math.abs(flexBalance))}
+              {positive ? '' : '−'}{fmtCAD(Math.abs(flexBalance))}
             </span>
             <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>running balance</span>
           </div>
@@ -355,7 +369,7 @@ function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
           </div>
           {thisMoSurplus > 0 && (
             <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => setOpen(o => !o)}>
-              {open ? 'Close' : 'Allocate Ã¢â€ â€™'}
+              {open ? 'Close' : 'Allocate ↗'}
             </button>
           )}
         </div>
@@ -365,13 +379,13 @@ function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
       {open && thisMoSurplus > 0 && (
         <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid color-mix(in oklab, ${accentColor}, transparent 72%)` }}>
           <div className="eyebrow" style={{ marginBottom: 12 }}>
-            Suggested allocation Ã¢â‚¬â€ {fmtCAD(thisMoSurplus)} surplus
+            Suggested allocation — {fmtCAD(thisMoSurplus)} surplus
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <FlexAllocRow
               color="oklch(58% 0.18 250)"
               label="Savings goals"
-              sublabel={goals.map(g => `${g.name.split(' ')[0]} ${Math.round(g.pct)}%`).join(' Ã‚Â· ')}
+              sublabel={goals.map(g => `${g.name.split(' ')[0]} ${Math.round(g.pct)}%`).join(' · ')}
               amount={savingsAlloc}
               accent={accentColor} />
             {goals.map(g => (
@@ -397,7 +411,7 @@ function FlexCard({ goals, flexBalance, thisMoSurplus, currentMonth }: {
 }
 
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Section divider Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Section divider ───────────────────────────────────────────────────────────
 function SIDivider({ icon, label }: { icon: string; label: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
@@ -413,11 +427,11 @@ function SIDivider({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Main page Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Main page ─────────────────────────────────────────────────────────────────
 export function SavingsInvestmentsPage() {
   const txs = useQuery(() => db.transactions.toArray(), []) ?? [];
 
-  // Persisted state Ã¢â‚¬â€ loaded from db.settings on mount
+  // Persisted state — loaded from db.settings on mount
   const [goals,               setGoalsRaw]               = useState<SavingsGoal[]>(SI_GOALS_DEFAULT);
   const [savingsOverride,     setSavingsOverrideRaw]     = useState<number | null>(null);
   const [savingsOverrideBase, setSavingsOverrideBaseRaw] = useState(0);
@@ -452,7 +466,7 @@ export function SavingsInvestmentsPage() {
     db.settings.put({ key: 'si_goals', value: next });
   }
 
-  // All savings transactions Ã¢â‚¬â€ cumulative, no month filter
+  // All savings transactions — cumulative, no month filter
   const savingsTxsAll = useMemo(() =>
     txs.filter(t => t.type === 'savings' && !t.hidden)
        .sort((a, b) => b.date.localeCompare(a.date)),
@@ -486,7 +500,7 @@ export function SavingsInvestmentsPage() {
     setEditingBalance(false);
   };
 
-  // Flex account surplus Ã¢â‚¬â€ always current month, not time-filtered
+  // Flex account surplus — always current month, not time-filtered
   const currentMonth = currentMonthKey();
   const thisMoSurplus = useMemo(() => {
     const monthTxs = txsInMonth(txs, currentMonth);
@@ -527,17 +541,23 @@ export function SavingsInvestmentsPage() {
         return { ...g, pct: g.pct + (otherTotal > 0 ? (g.pct / otherTotal) * lostPct : lostPct / Math.max(1, otherUnlocked.length)) };
       }));
     } else {
-      // Unlock: release value, give goal a fresh pct from the active pool
-      const otherUnlocked = goals.filter(g => g.id !== id && !g.locked);
-      const otherTotal    = otherUnlocked.reduce((s, g) => s + g.pct, 0);
-      const newPct        = Math.min(20, Math.max(1, otherTotal * 0.2));
-      const scale         = otherTotal > 0 ? (otherTotal - newPct) / otherTotal : 1;
+      // Unlock: restore lockedValue as the dollar amount in the new free pool
+      const lockedVal      = goal.lockedValue ?? 0;
+      const newFreeBalance = balance - (lockedTotal - lockedVal);
+      const otherUnlocked  = goals.filter(g => g.id !== id && !g.locked);
+      const otherTotal     = otherUnlocked.reduce((s, g) => s + g.pct, 0);
+      const newPct         = newFreeBalance > 0 ? Math.min(100, (lockedVal / newFreeBalance) * 100) : 0;
+      const scale          = otherTotal > 0 ? (100 - newPct) / otherTotal : 1;
       setGoals(goals.map(g => {
         if (g.id === id) return { ...g, locked: false, lockedValue: undefined, pct: newPct };
         if (g.locked)    return g;
         return { ...g, pct: g.pct * scale };
       }));
     }
+  };
+
+  const setLockedValue = (id: string, val: number) => {
+    setGoals(goals.map(g => g.id === id ? { ...g, lockedValue: val } : g));
   };
 
   const reallocateGoal = (id: string, newAmount: number) => {
@@ -596,7 +616,7 @@ export function SavingsInvestmentsPage() {
   if (!settingsLoaded) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--ink-mute)', fontSize: 13 }}>
-        LoadingÃ¢â‚¬Â¦
+        Loading…
       </div>
     );
   }
@@ -604,14 +624,14 @@ export function SavingsInvestmentsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1040 }}>
 
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬ Page header Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* ── Page header ──────────────────────────────────────────────────────── */}
       <div>
         <div className="eyebrow" style={{ marginBottom: 6 }}>Wealth</div>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em' }}>Savings</div>
             <div style={{ fontSize: 13, color: 'var(--ink-soft)', marginTop: 4, maxWidth: 560 }}>
-              Current snapshot Ã¢â‚¬â€ partition your savings across goals Ã‚Â· surplus flows through the Flex buffer.
+              Current snapshot — partition your savings across goals · surplus flows through the Flex buffer.
             </div>
           </div>
           <button className="btn btn-ghost" style={{ fontSize: 11, flexShrink: 0, marginTop: 4 }}
@@ -622,7 +642,7 @@ export function SavingsInvestmentsPage() {
         </div>
       </div>
 
-      {/* Ã¢â€â‚¬Ã¢â€â‚¬ Flex Account Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+      {/* ── Flex Account ─────────────────────────────────────────────────────── */}
       {showFlex && <FlexCard goals={goals} flexBalance={flexBalance} thisMoSurplus={thisMoSurplus} currentMonth={currentMonth} />}
 
 
@@ -665,6 +685,21 @@ export function SavingsInvestmentsPage() {
                 </button>
               </div>
             )}
+            {/* Balance breakdown */}
+            <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--accent)', flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>Active</span>
+                <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'var(--mono)', color: 'var(--ink)' }}>{fmtCAD(Math.max(0, freeBalance))}</span>
+              </div>
+              {lockedTotal > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: 'oklch(50% 0.18 160)', flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>Completed</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, fontFamily: 'var(--mono)', color: 'oklch(44% 0.18 160)' }}>{fmtCAD(lockedTotal)}</span>
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div className="eyebrow" style={{ marginBottom: 4 }}>From transactions</div>
@@ -677,37 +712,37 @@ export function SavingsInvestmentsPage() {
           </div>
         </div>
 
-        {/* Active goals Ã¢â‚¬â€ allocation plan for new savings */}
+        {/* Active goals — allocation plan for new savings */}
         {(() => {
           const activeGoals = goals.filter(g => !g.locked);
           return activeGoals.length > 0 ? (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <div style={{ fontSize: 12, color: freeBalance < 0 ? 'var(--danger)' : 'var(--ink-soft)' }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-mute)', marginBottom: 2 }}>Active savings</div>
+                  <div style={{ fontSize: 20, fontWeight: 500, fontFamily: 'var(--mono)', letterSpacing: '-0.02em', color: freeBalance < 0 ? 'var(--danger)' : 'var(--ink)' }}>{fmtCAD(Math.max(0, freeBalance))}</div>
+                </div>
+                <div style={{ fontSize: 12, color: freeBalance < 0 ? 'var(--danger)' : 'var(--ink-soft)', textAlign: 'right' }}>
                   {freeBalance > 0
-                    ? `Distributing ${fmtCAD(freeBalance)} Ã‚Â· drag to rebalance`
+                    ? `Drag to rebalance`
                     : freeBalance < 0
                       ? `Locked goals exceed balance by ${fmtCAD(Math.abs(freeBalance))}`
-                      : 'Allocation plan Ã¢â‚¬â€ drag to set % for new savings'}
+                      : 'Drag to set % for new savings'}
+                  {freeBalance < 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--danger)', fontStyle: 'italic', marginTop: 2 }}>
+                      Save {fmtCAD(Math.abs(freeBalance))} more or unlock a goal
+                    </div>
+                  )}
                 </div>
-                {freeBalance < 0 && (
-                  <span style={{ fontSize: 11, color: 'var(--danger)', fontStyle: 'italic' }}>
-                    Save {fmtCAD(Math.abs(freeBalance))} more or unlock a goal
-                  </span>
-                )}
-                {freeBalance === 0 && (
-                  <span style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic' }}>
-                    No free balance yet Ã¢â‚¬â€ percentages shown
-                  </span>
-                )}
               </div>
               <PartitionSlider goals={goals} balance={Math.max(0, freeBalance)} onGoalsChange={setGoals} />
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', marginTop: 16 }}>
                 {activeGoals.map(g => (
-                  <GoalCard key={g.id} goal={g} freeBalance={freeBalance}
-                    onRename={name     => updateGoal(g.id, { name })}
-                    onRetarget={target => updateGoal(g.id, { target })}
-                    onReallocate={amt  => reallocateGoal(g.id, amt)}
+                  <GoalCard key={g.id} goal={g} freeBalance={freeBalance} totalBalance={balance}
+                    onRename={name       => updateGoal(g.id, { name })}
+                    onRetarget={target   => updateGoal(g.id, { target })}
+                    onReallocate={amt    => reallocateGoal(g.id, amt)}
+                    onSetLockedValue={v  => setLockedValue(g.id, v)}
                     onRemove={() => removeGoal(g.id)}
                     onToggleLock={() => toggleLock(g.id)} />
                 ))}
@@ -737,7 +772,7 @@ export function SavingsInvestmentsPage() {
           ) : (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--ink-mute)' }}>
               <div style={{ fontSize: 13, marginBottom: 10 }}>
-                {goals.some(g => g.locked) ? 'All goals completed Ã¢â‚¬â€ add a new one to keep saving.' : 'No goals yet.'}
+                {goals.some(g => g.locked) ? 'All goals completed — add a new one to keep saving.' : 'No goals yet.'}
               </div>
               <button className="btn btn-primary" onClick={() => setShowAddGoal(true)}>
                 <Icon name="plus" size={12} />Add goal
@@ -761,20 +796,25 @@ export function SavingsInvestmentsPage() {
         })()}
       </div>
 
-      {/* Completed Goals Ã¢â‚¬â€ locked goals shown separately */}
+      {/* Completed Goals — locked goals shown separately */}
       {goals.some(g => g.locked) && (
         <>
           <SIDivider icon="check" label="Completed Goals" />
           <div className="glass" style={{ padding: 20 }}>
-            <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 14 }}>
-              Value locked in Ã‚Â· unlock to re-enter the active savings pool
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'oklch(50% 0.18 160)', marginBottom: 2 }}>Completed savings</div>
+                <div style={{ fontSize: 20, fontWeight: 500, fontFamily: 'var(--mono)', letterSpacing: '-0.02em', color: 'oklch(44% 0.18 160)' }}>{fmtCAD(lockedTotal)}</div>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>Value locked in · unlock to re-enter the active pool</div>
             </div>
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))' }}>
               {goals.filter(g => g.locked).map(g => (
-                <GoalCard key={g.id} goal={g} freeBalance={freeBalance}
-                  onRename={name     => updateGoal(g.id, { name })}
-                  onRetarget={target => updateGoal(g.id, { target })}
-                  onReallocate={amt  => reallocateGoal(g.id, amt)}
+                <GoalCard key={g.id} goal={g} freeBalance={freeBalance} totalBalance={balance}
+                  onRename={name       => updateGoal(g.id, { name })}
+                  onRetarget={target   => updateGoal(g.id, { target })}
+                  onReallocate={amt    => reallocateGoal(g.id, amt)}
+                  onSetLockedValue={v  => setLockedValue(g.id, v)}
                   onRemove={() => removeGoal(g.id)}
                   onToggleLock={() => toggleLock(g.id)} />
               ))}
@@ -783,12 +823,12 @@ export function SavingsInvestmentsPage() {
         </>
       )}
 
-      {/* Savings history table Ã¢â‚¬â€ all time */}
+      {/* Savings history table — all time */}
       <div className="glass" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid var(--line)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontWeight: 500, fontSize: 14 }}>Savings history</div>
-          <span className="chip">Auto-detected from "Savings Transfer" category Ã‚Â· all time</span>
+          <span className="chip">Auto-detected from "Savings Transfer" category · all time</span>
         </div>
         <table className="data">
           <thead>
@@ -813,7 +853,7 @@ export function SavingsInvestmentsPage() {
                 <td style={{ textAlign: 'right', fontWeight: 500, fontFamily: 'var(--mono)', color: 'oklch(48% 0.17 165)' }}>
                   +{fmtCAD(t.amount)}
                 </td>
-                <td style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{t.notes || 'Ã¢â‚¬â€'}</td>
+                <td style={{ fontSize: 11, color: 'var(--ink-mute)' }}>{t.notes || '—'}</td>
               </tr>
             ))}
           </tbody>

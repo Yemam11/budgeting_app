@@ -124,6 +124,7 @@ export interface InvestmentAccount {
   name: string;
   institution: string;
   roomLeft?: number;
+  valueOverride?: number;
 }
 
 export interface Holding {
@@ -131,6 +132,8 @@ export interface Holding {
   accountId: string;
   ticker: string;
   shares: number;
+  name?: string;    // Full security name, e.g. 'Apple Inc.'
+  avgCost?: number; // Average cost per share in CAD (cost basis)
 }
 
 export type AmountOp = '>' | '<' | '>=' | '<=' | '=';
