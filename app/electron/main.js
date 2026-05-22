@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import pkg from 'electron-updater';
@@ -8,9 +8,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 let mainWindow = null;
 
 function createWindow() {
+  Menu.setApplicationMenu(null);
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
