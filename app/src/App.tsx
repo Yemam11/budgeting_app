@@ -10,7 +10,7 @@ import { OutstandingPage } from './pages/Outstanding';
 import { ContactsPage } from './pages/Contacts';
 import { SettingsPage } from './pages/Settings';
 import { EnvelopesPage } from './pages/Envelopes';
-import { SavingsInvestmentsPage } from './pages/SavingsInvestments';
+import { SavingsInvestmentsPage } from './pages/Savings';
 import { InvestmentsPage } from './pages/Investments';
 import { Icon, Toggle } from './components/Primitives';
 

@@ -118,6 +118,8 @@ sqldb.exec(`
 `);
 try { sqldb.exec('ALTER TABLE import_batches ADD COLUMN dateFrom TEXT'); } catch {}
 try { sqldb.exec('ALTER TABLE import_batches ADD COLUMN dateTo TEXT'); } catch {}
+try { sqldb.exec('ALTER TABLE holdings ADD COLUMN name TEXT DEFAULT ""'); } catch {}
+try { sqldb.exec('ALTER TABLE holdings ADD COLUMN avgCost REAL'); } catch {}
 
 const TABLES = {
   transactions:     { sql: 'transactions',   pk: 'id' },
@@ -345,6 +347,30 @@ app.get('/api/ticker-search', async (req, res) => {
     const quotes = (data?.quotes ?? []).filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF');
     res.json(quotes.slice(0, 8).map(q => ({ ticker: q.symbol, name: q.shortname || q.longname || '' })));
   } catch { res.json([]); }
+});
+
+app.get('/api/logo', async (req, res) => {
+  const rawTicker = String(req.query.ticker || '').replace(/[^A-Za-z0-9.-]/g, '').toUpperCase();
+  if (!rawTicker) return res.status(400).end();
+  // Strip exchange suffix for logo lookup (e.g. VFV.TO → VFV)
+  const ticker = rawTicker.split('.')[0];
+  const sources = [
+    { url: `https://assets.parqet.com/logos/symbol/${ticker}?format=svg`, type: 'image/svg+xml' },
+    { url: `https://financialmodelingprep.com/image-stock/${ticker}.png`, type: 'image/png' },
+    { url: `https://s3-symbol-logo.tradingview.com/${ticker.toLowerCase()}--big.svg`, type: 'image/svg+xml' },
+  ];
+  for (const { url, type } of sources) {
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.tradingview.com/' } });
+      if (r.ok) {
+        res.set('Content-Type', type);
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.end(Buffer.from(await r.arrayBuffer()));
+        return;
+      }
+    } catch { /* try next source */ }
+  }
+  res.status(404).end();
 });
 
 app.delete('/api/all', (_req, res) => {
